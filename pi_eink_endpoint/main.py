@@ -1,3 +1,4 @@
+import io
 import json
 import sys
 from http import HTTPStatus
@@ -19,7 +20,7 @@ class EinkHandler(BaseHTTPRequestHandler):
     lock = Lock()
 
     def do_POST(self):
-        if self.path == "/update_eink":
+        if self.path == "/text":
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
             try:
@@ -31,7 +32,19 @@ class EinkHandler(BaseHTTPRequestHandler):
                 return
 
             with self.lock:
-                response = update_eink(data)
+                response = update_eink_from_text(data)
+
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+
+        elif self.path == "/image":
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length)
+
+            with self.lock:
+                response = update_eink_from_image(post_data)
 
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json")
@@ -43,7 +56,7 @@ class EinkHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"Not Found")
 
 
-def update_eink(data: dict):
+def update_eink_from_text(data: dict):
     epd = epd2in9_V3.EPD()
     epd.init()
 
@@ -54,6 +67,18 @@ def update_eink(data: dict):
     epd.display(epd.getbuffer(image))
     epd.sleep()
     return {"message": "E-ink display updated", "data": data}
+
+
+def update_eink_from_image(binary_image: bytes):
+    epd = epd2in9_V3.EPD()
+    epd.init()
+
+    image = Image.open(io.BytesIO(binary_image)).convert("1")
+    image = image.resize((epd.width, epd.height))
+
+    epd.display(epd.getbuffer(image))
+    epd.sleep()
+    return {"message": "E-ink display updated from image"}
 
 
 if __name__ == "__main__":
