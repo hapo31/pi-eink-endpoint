@@ -73,11 +73,15 @@ def update_eink_from_image(binary_image: bytes):
     epd = epd2in9_V3.EPD()
     epd.init()
 
-    image = Image.open(io.BytesIO(binary_image)).convert("1")
+    image = Image.open(io.BytesIO(binary_image)).convert("L")
     image = image.resize((epd.width, epd.height))
 
-    epd.display(epd.getbuffer(image))
+    image = image.point(lambda value: (0x00, 0x80, 0xC0, 0xFF)[value * 4 // 256])
+
+    epd.Init_4Gray()
+    epd.display_4Gray(epd.getbuffer_4Gray(image))
     epd.sleep()
+
     return {"message": "E-ink display updated from image"}
 
 
