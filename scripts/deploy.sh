@@ -17,6 +17,10 @@ if [ -z $RASPI_KEY_PATH ]; then
   exit 1
 fi
 
-cp pi_eink_endpoint/**/*.py dist/
+cd "$(dirname "$0")/.."
+
+rm -rf dist/*
+find pi_eink_endpoint -type f -name '*.py' -exec cp --parents {} dist/ \;
 cp pyproject.toml dist/
+cp README.md dist/
 rsync -avz --mkpath --delete dist/ "$RASPI_USER@$RASPI_HOST:/home/${RASPI_USER}/eink-endpoint/dist/" -e "ssh -i $RASPI_KEY_PATH"

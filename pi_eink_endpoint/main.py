@@ -1,7 +1,10 @@
+import json
 import sys
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 
-from fastapi import FastAPI
 from PIL import Image, ImageDraw
 
 WAVESHARE_LIB = (
@@ -11,11 +14,36 @@ sys.path.insert(0, str(WAVESHARE_LIB))
 
 from waveshare_epd import epd2in9_V3
 
-app = FastAPI()
+
+class EinkHandler(BaseHTTPRequestHandler):
+    lock = Lock()
+
+    def do_POST(self):
+        if self.path == "/update_eink":
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data)
+            except json.JSONDecodeError:
+                self.send_response(HTTPStatus.BAD_REQUEST)
+                self.end_headers()
+                self.wfile.write(b"Invalid JSON")
+                return
+
+            with self.lock:
+                response = update_eink(data)
+
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+        else:
+            self.send_response(HTTPStatus.NOT_FOUND)
+            self.end_headers()
+            self.wfile.write(b"Not Found")
 
 
-@app.post("/eink")
-async def update_eink(data: dict):
+def update_eink(data: dict):
     epd = epd2in9_V3.EPD()
     epd.init()
 
@@ -26,3 +54,9 @@ async def update_eink(data: dict):
     epd.display(epd.getbuffer(image))
     epd.sleep()
     return {"message": "E-ink display updated", "data": data}
+
+
+if __name__ == "__main__":
+    server = ThreadingHTTPServer(("0.0.0.0", 8000), EinkHandler)
+    print("Listening on http://0.0.0.0:8000")
+    server.serve_forever()
