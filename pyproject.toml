@@ -3,13 +3,9 @@ name = "pi-eink-endpoint"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "happo31", email = "happo31@gmail.com" }
-]
+authors = [{ name = "happo31", email = "happo31@gmail.com" }]
 requires-python = ">=3.11"
-dependencies = [
-    "fastapi[standard]>=0.141.1",
-]
+dependencies = ["fastapi[standard]>=0.141.1", "pillow", "spidev", "gpiozero"]
 
 [project.scripts]
 pi-eink-endpoint = "pi_eink_endpoint:main"
