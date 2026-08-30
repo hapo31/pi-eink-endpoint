@@ -21,6 +21,5 @@ cd "$(dirname "$0")/.."
 
 rm -rf dist/*
 find pi_eink_endpoint -type f -name '*.py' -exec cp --parents {} dist/ \;
-cp pyproject.toml dist/
-cp README.md dist/
+cp scripts/pi-eink-endpoint@.service dist/
 rsync -avz --mkpath --delete dist/ "$RASPI_USER@$RASPI_HOST:/home/${RASPI_USER}/eink-endpoint/dist/" -e "ssh -i $RASPI_KEY_PATH"
