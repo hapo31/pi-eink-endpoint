@@ -1,0 +1,3 @@
+[submodule "pi_eink_endpoint/waveshare_e_paper"]
+	path = pi_eink_endpoint/waveshare_e_paper
+	url = https://github.com/waveshareteam/e-Paper
