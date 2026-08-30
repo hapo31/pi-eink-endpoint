@@ -1,0 +1,15 @@
+[Unit]
+Description=Pi E-ink endpoint for user %i
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/eink-endpoint/dist
+ExecStart=/usr/bin/python3 /home/%i/eink-endpoint/dist/pi_eink_endpoint/main.py
+Restart=on-failure
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
