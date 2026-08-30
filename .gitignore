@@ -1,8 +1,11 @@
 node_modules/
 dist/
 .env
+.venv/
 
 *.js
 
 package-lock.json
 yarn.lock
+
+.env
