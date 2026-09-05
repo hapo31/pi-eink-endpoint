@@ -60,7 +60,8 @@ def update_eink_from_text(data: dict):
     epd = epd2in9_V3.EPD()
     epd.init()
 
-    image = Image.new("1", (epd.width, epd.height), 255)
+    # The driver rotates landscape images 90 degrees into panel coordinates.
+    image = Image.new("1", (epd.height, epd.width), 255)
     draw = ImageDraw.Draw(image)
     draw.text((10, 10), data.get("text", "Hello E-ink"), fill=0)
 
@@ -74,7 +75,8 @@ def update_eink_from_image(binary_image: bytes):
     epd.init()
 
     image = Image.open(io.BytesIO(binary_image)).convert("L")
-    image = image.resize((epd.width, epd.height))
+    # The driver rotates landscape images 90 degrees into panel coordinates.
+    image = image.resize((epd.height, epd.width))
 
     image = image.point(lambda value: (0x00, 0x80, 0xC0, 0xFF)[value * 4 // 256])
 
