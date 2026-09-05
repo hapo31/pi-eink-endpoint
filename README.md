@@ -1,17 +1,17 @@
 # pi-eink-endpoint
 
 Raspberry Pi 3 に接続した Waveshare の電子ペーパーを HTTP API で更新する Python アプリです。
-テキストと画像のリクエストを受け付け、1 つのキューで順番に描画します。
+FastAPI + Uvicorn でテキストと画像のリクエストを受け付け、1 つのキューで順番に描画します。
 
 ## 動作環境
 
 - Raspberry Pi 3
-- Raspberry Pi OS Lite（以下の手順は Bookworm 以降を想定）
+- Raspberry Pi OS Lite 64-bit（aarch64、以下の手順は Bookworm 以降を想定）
 - Waveshare 2.9 インチ電子ペーパー V3（`epd2in9_V3`、128 × 296 ピクセル）と対応する接続基板
-- Python 3、Pillow、gpiozero、spidev、GPIO バックエンド
+- Python 3.11 以降、FastAPI、Uvicorn、Pillow、gpiozero、spidev、GPIO バックエンド
 - デプロイ元の PC: Bash、Git、SSH、`--mkpath` オプションに対応する rsync
 
-Pi 3 では 32-bit / 64-bit の Raspberry Pi OS を選択できます。OS の選択については
+このプロジェクトでは Pi 3 の aarch64 環境を前提とします。OS については
 [Raspberry Pi 公式ドキュメント](https://www.raspberrypi.com/documentation/computers/os.html)を参照してください。
 アプリは OS の `/usr/bin/python3` と `apt` でインストールしたパッケージを使います。
 
@@ -48,7 +48,7 @@ Pi 3 にリポジトリを clone 済みなら、ルートから `bash scripts/se
 
 スクリプトは次を実行します。
 
-- Pillow、NumPy、gpiozero、lgpio、RPi.GPIO、spidev と Python 3、デプロイ用の rsync を導入
+- FastAPI、Uvicorn、Pillow、NumPy、gpiozero、lgpio、RPi.GPIO、spidev と Python 3、デプロイ用の rsync を導入
 - `raspi-config nonint do_spi 0` で SPI を有効化
 - 指定ユーザーを `gpio` / `spi` グループに追加（既存の所属グループは保持）
 - 指定ユーザーの `/usr/bin/python3` で依存パッケージの import を確認
@@ -145,6 +145,9 @@ Pi 3 の `/home/<user>/eink-endpoint/dist/` に転送します。転送先は `r
 
 ## サービスの登録と運用
 
+既存の HTTP サーバーから移行する場合は、更新した `setup_waveshare_eink.sh` を Pi 3 で再実行し、
+`python3-fastapi` と `python3-uvicorn` を導入してください。
+
 デプロイ後、Pi 3 に `RASPI_USER` でログインして実行します。
 ユニットはホームディレクトリが `/home/<user>` にある構成を前提としています。
 
@@ -174,15 +177,17 @@ sudo systemctl restart "pi-eink-endpoint@$USER.service"
 ```bash
 sudo systemctl stop "pi-eink-endpoint@$USER.service"
 cd "$HOME/eink-endpoint/dist"
-/usr/bin/python3 pi_eink_endpoint/main.py
+/usr/bin/python3 -m uvicorn pi_eink_endpoint.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
 確認後は `Ctrl+C` で終了し、`sudo systemctl start "pi-eink-endpoint@$USER.service"` でサービスを戻します。
-ディスプレイ 1 台につきサーバープロセスは 1 つにしてください。
+ディスプレイ 1 台につきサーバープロセスは 1 つにしてください。Uvicorn は `--workers 1` で実行し、
+実機では `--reload` を使わないでください。複数プロセスでは描画キューが分かれ、パネルに同時アクセスしてしまいます。
 
 ## API
 
 サーバーは `0.0.0.0:8000` で待ち受けます。以下は Pi 3 に接続できる PC からの実行例です。
+API ドキュメントは `http://pi3.local:8000/docs`、OpenAPI 定義は `/openapi.json` で確認できます。
 
 ### テキスト表示
 
@@ -216,7 +221,8 @@ HTTP `202 Accepted` と `{"message": "E-ink update queued"}` を返します。
 両エンドポイントはメモリ上の FIFO キューを共有し、1 つのワーカーが追加順に描画します。
 更新中に届いたリクエストも順番に処理します。描画に失敗するとログに記録し、次のリクエストへ進みます。
 `202` は受付の完了を示し、描画の成功を保証しません。画像の読み込みエラーも描画時にログへ記録されます。
-プロセスの終了・再起動で、メモリ上の未処理リクエストは失われます。
+描画ワーカーは FastAPI の lifespan で起動し、通常終了時は受付済みのキューを処理してから停止します。
+強制終了や systemd の停止タイムアウトでは、メモリ上の未処理リクエストは失われます。
 
 ## Pi Zero からの移行
 
@@ -232,7 +238,7 @@ HTTP `202 Accepted` と `{"message": "E-ink update queued"}` を返します。
 | 症状 | 確認すること |
 | --- | --- |
 | `No module named waveshare_epd` | サブモジュールを初期化してから再デプロイしたか |
-| `PIL` / `gpiozero` / `spidev` などの import エラー | Pi 3 に依存パッケージを導入し、`/usr/bin/python3` を使っているか |
+| `fastapi` / `uvicorn` / `PIL` / `gpiozero` / `spidev` などの import エラー | Pi 3 に依存パッケージを導入し、`/usr/bin/python3` を使っているか |
 | `/dev/spidev0.0` がない | SPI を有効にして再起動したか |
 | GPIO / SPI の権限エラー | サービス実行ユーザーが `gpio` / `spi` グループに所属しているか |
 | 接続できない | 接続先が Pi 3 のアドレスとポート `8000` になっているか、サービスが起動しているか |
@@ -243,11 +249,15 @@ HTTP `202 Accepted` と `{"message": "E-ink update queued"}` を返します。
 
 セットアップスクリプトのテストは OS 設定用コマンドを、キューのテストは GPIO ドライバーをモックするため、
 Pi 3 や電子ペーパーがなくても実行できます。
-Pillow がインストールされた Python 環境で、リポジトリルートから実行してください。
+開発用依存は `pyproject.toml` と `uv.lock` で管理します。uv を用意して、リポジトリルートから実行してください。
+Pi の本番環境では引き続き apt のシステムパッケージを使います。
+[Bookworm の FastAPI 0.92](https://packages.debian.org/bookworm/python3-fastapi)にも対応しています。
 
 ```bash
-python3 -m unittest discover -s tests -v
+uv sync --locked
+uv run --locked python -m unittest discover -s tests -v
 ```
 
-このテストはセットアップのユーザー選択・失敗時の停止と、API の受付応答・処理順・エラー後の継続を確認します。
+このテストはセットアップのユーザー選択・失敗時の停止と、API の受付応答・処理順・エラー後の継続、
+終了時のキュー処理、API ドキュメントを確認します。描画処理を止めた状態でも受付が完了することを検証します。
 実際のパッケージ導入、SPI 通信、画面表示は Pi 3 で確認してください。

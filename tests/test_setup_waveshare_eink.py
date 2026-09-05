@@ -77,6 +77,10 @@ class SetupTests(unittest.TestCase):
                 check = next(call for call in calls if call[0] == 'runuser')
                 self.assertEqual(check[1:6], ['-u', expected, '--', '/usr/bin/python3', '-c'])
                 self.assertIn(['raspi-config', 'nonint', 'do_spi', '0'], calls)
+                packages = next(call for call in calls if call[:2] == ['apt-get', 'install'])
+                for package in ('python3-fastapi', 'python3-uvicorn'):
+                    self.assertIn(package, packages)
+                self.assertIn('import fastapi, uvicorn', check[-1])
                 self.assertIn('sudo reboot', result.stdout)
 
     def test_rejects_invalid_users_and_arguments_before_modifying_system(self):

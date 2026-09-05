@@ -1,0 +1,16 @@
+[project]
+name = "pi-eink-endpoint"
+version = "0.1.0"
+description = "FastAPI endpoint for a Raspberry Pi Waveshare e-ink display"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.92,<1",
+    "uvicorn>=0.17,<1",
+    "pillow>=9.4",
+]
+
+[dependency-groups]
+dev = ["httpx>=0.27,<1"]
+
+[tool.uv]
+package = false

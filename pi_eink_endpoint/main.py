@@ -2,13 +2,16 @@ import io
 import json
 import logging
 import sys
+from contextlib import asynccontextmanager
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from queue import Queue
 from threading import Thread
 
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from PIL import Image, ImageDraw, ImageOps
+from starlette.concurrency import run_in_threadpool
 
 WAVESHARE_LIB = (
     Path(__file__).parent / "waveshare_e_paper/RaspberryPi_JetsonNano/python/lib"
@@ -21,11 +24,10 @@ from waveshare_epd import epd2in9_V3
 logger = logging.getLogger(__name__)
 
 
-class EinkServer(ThreadingHTTPServer):
-    def __init__(self, server_address, handler_class=None):
-        super().__init__(server_address, handler_class or EinkHandler)
+class RenderWorker:
+    def __init__(self):
         self.render_queue = Queue()
-        self.render_worker = Thread(target=self._render_jobs, daemon=True)
+        self.render_worker = Thread(target=self._render_jobs, name="eink-render", daemon=True)
         self.render_worker.start()
 
     def _render_jobs(self):
@@ -41,45 +43,79 @@ class EinkServer(ThreadingHTTPServer):
             finally:
                 self.render_queue.task_done()
 
-    def server_close(self):
-        super().server_close()
+    def close(self):
+        # Drain accepted jobs before the worker stops on normal shutdown.
         self.render_queue.put(None)
         self.render_worker.join()
 
 
-class EinkHandler(BaseHTTPRequestHandler):
-    def enqueue_render(self, render, payload):
-        self.server.render_queue.put((render, payload))
-        response = json.dumps({"message": "E-ink update queued"}).encode()
-        self.send_response(HTTPStatus.ACCEPTED)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(response)))
-        self.end_headers()
-        self.wfile.write(response)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    worker = RenderWorker()
+    app.state.render_worker = worker
+    try:
+        yield
+    finally:
+        await run_in_threadpool(worker.close)
 
-    def do_POST(self):
-        if self.path == "/text":
-            content_length = int(self.headers.get("Content-Length", 0))
-            post_data = self.rfile.read(content_length)
-            try:
-                data = json.loads(post_data)
-            except json.JSONDecodeError:
-                self.send_response(HTTPStatus.BAD_REQUEST)
-                self.end_headers()
-                self.wfile.write(b"Invalid JSON")
-                return
 
-            self.enqueue_render(update_eink_from_text, data)
+def create_app() -> FastAPI:
+    app = FastAPI(title="Pi E-ink Endpoint")
+    # Bookworm's FastAPI 0.92 does not forward the lifespan constructor argument.
+    # Register on its Starlette router, which supports the same lifespan protocol.
+    app.router.lifespan_context = lifespan
 
-        elif self.path == "/image":
-            content_length = int(self.headers.get("Content-Length", 0))
-            post_data = self.rfile.read(content_length)
+    @app.post(
+        "/text",
+        status_code=HTTPStatus.ACCEPTED,
+        responses={400: {"description": "Invalid JSON"}},
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "text": {"type": "string", "default": "Hello E-ink"}
+                            },
+                        }
+                    }
+                },
+            }
+        },
+    )
+    async def post_text(request: Request):
+        """Queue text without waiting for the panel refresh."""
+        # Preserve malformed JSON's 400 response and callers without Content-Type.
+        try:
+            data = json.loads(await request.body())
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return PlainTextResponse("Invalid JSON", status_code=HTTPStatus.BAD_REQUEST)
+        request.app.state.render_worker.render_queue.put((update_eink_from_text, data))
+        return {"message": "E-ink update queued"}
 
-            self.enqueue_render(update_eink_from_image, post_data)
-        else:
-            self.send_response(HTTPStatus.NOT_FOUND)
-            self.end_headers()
-            self.wfile.write(b"Not Found")
+    @app.post(
+        "/image",
+        status_code=HTTPStatus.ACCEPTED,
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/octet-stream": {
+                        "schema": {"type": "string", "format": "binary"}
+                    }
+                },
+            }
+        },
+    )
+    async def post_image(request: Request):
+        """Queue raw image bytes (not multipart) for display."""
+        data = await request.body()
+        request.app.state.render_worker.render_queue.put((update_eink_from_image, data))
+        return {"message": "E-ink update queued"}
+
+    return app
 
 
 def update_eink_from_text(data: dict):
@@ -119,10 +155,10 @@ def update_eink_from_image(binary_image: bytes):
     return {"message": "E-ink display updated from image"}
 
 
+app = create_app()
+
+
 if __name__ == "__main__":
-    with EinkServer(("0.0.0.0", 8000)) as server:
-        print("Listening on http://0.0.0.0:8000")
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000, workers=1)

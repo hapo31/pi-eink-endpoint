@@ -49,10 +49,12 @@ fi
 
 trap 'echo "Waveshare setup failed at line $LINENO; fix the error and rerun." >&2' ERR
 
-echo "Installing Waveshare Python dependencies..."
+echo "Installing API and Waveshare Python dependencies..."
 "${SUDO[@]}" apt-get update
 "${SUDO[@]}" apt-get install -y \
     python3 \
+    python3-fastapi \
+    python3-uvicorn \
     python3-pil \
     python3-numpy \
     python3-gpiozero \
@@ -69,7 +71,7 @@ echo "Granting GPIO/SPI access to $TARGET_USER..."
 
 echo "Checking system Python dependencies as $TARGET_USER..."
 "${SUDO[@]}" runuser -u "$TARGET_USER" -- /usr/bin/python3 -c \
-    'from PIL import Image; import gpiozero, lgpio, numpy, spidev, RPi.GPIO; print("Dependencies OK")'
+    'from PIL import Image; import fastapi, uvicorn, gpiozero, lgpio, numpy, spidev, RPi.GPIO; print("Dependencies OK")'
 
 if [[ -e /dev/spidev0.0 ]]; then
     echo "SPI device found: /dev/spidev0.0"

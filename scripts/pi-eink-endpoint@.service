@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=%i
 WorkingDirectory=/home/%i/eink-endpoint/dist
-ExecStart=/usr/bin/python3 /home/%i/eink-endpoint/dist/pi_eink_endpoint/main.py
+ExecStart=/usr/bin/python3 -m uvicorn pi_eink_endpoint.main:app --host 0.0.0.0 --port 8000 --workers 1
 Restart=on-failure
 RestartSec=2
 Environment=PYTHONUNBUFFERED=1
