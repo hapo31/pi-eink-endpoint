@@ -29,3 +29,16 @@ Check the service with:
 systemctl status pi-eink-endpoint@$USER
 journalctl -u pi-eink-endpoint@$USER -f
 ```
+
+## Request handling
+
+`POST /text` (JSON) and `POST /image` (image bytes) return HTTP `202 Accepted`
+with `{"message": "E-ink update queued"}` once the request body has been received
+and queued, without waiting for the display refresh. Invalid JSON still returns
+HTTP `400 Bad Request`.
+
+Both endpoints share one in-memory FIFO queue. A single worker renders requests
+in enqueue order, including requests received while another refresh is running.
+Rendering failures are logged and the worker continues with the next request;
+`202` confirms acceptance, not successful rendering. Queued requests are lost
+if the process is terminated or restarted. Run only one server process per display.
