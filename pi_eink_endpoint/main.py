@@ -8,7 +8,7 @@ from pathlib import Path
 from queue import Queue
 from threading import Thread
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 WAVESHARE_LIB = (
     Path(__file__).parent / "waveshare_e_paper/RaspberryPi_JetsonNano/python/lib"
@@ -102,7 +102,13 @@ def update_eink_from_image(binary_image: bytes):
 
     image = Image.open(io.BytesIO(binary_image)).convert("L")
     # The driver rotates landscape images 90 degrees into panel coordinates.
-    image = image.resize((epd.height, epd.width))
+    display_size = (epd.height, epd.width)
+    fitted = ImageOps.contain(image, display_size, Image.Resampling.LANCZOS)
+    image = Image.new("L", display_size, 255)
+    image.paste(
+        fitted,
+        ((image.width - fitted.width) // 2, (image.height - fitted.height) // 2),
+    )
 
     image = image.point(lambda value: (0x00, 0x80, 0xC0, 0xFF)[value * 4 // 256])
 
