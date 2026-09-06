@@ -6,10 +6,15 @@ After=network.target
 Type=simple
 User=%i
 WorkingDirectory=/home/%i/eink-endpoint/dist
+StateDirectory=pi-eink-endpoint
+UMask=0077
 ExecStart=/usr/bin/python3 -m uvicorn pi_eink_endpoint.main:app --host 0.0.0.0 --port 8000 --workers 1
 Restart=on-failure
 RestartSec=2
 Environment=PYTHONUNBUFFERED=1
+Environment=CODEX_EXECUTABLE=/usr/local/bin/codex
+Environment=CODEX_STATE_DIR=/var/lib/pi-eink-endpoint/codex
+Environment=CODEX_TIMEZONE=Asia/Tokyo
 
 [Install]
 WantedBy=multi-user.target

@@ -43,7 +43,7 @@ class SetupTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         directory = Path(self.temp.name)
         self.log = directory / 'commands.jsonl'
-        for command in ('id', 'sudo', 'apt-get', 'raspi-config', 'usermod', 'runuser'):
+        for command in ('id', 'sudo', 'apt-get', 'raspi-config', 'usermod', 'runuser', 'npm'):
             stub = directory / command
             stub.write_text(f'#!{sys.executable}\n' + STUB)
             stub.chmod(0o755)
@@ -80,6 +80,7 @@ class SetupTests(unittest.TestCase):
                 packages = next(call for call in calls if call[:2] == ['apt-get', 'install'])
                 for package in ('python3-fastapi', 'python3-uvicorn'):
                     self.assertIn(package, packages)
+                self.assertIn(['npm', 'install', '--global', '@openai/codex@0.153.0'], calls)
                 self.assertIn('import fastapi, uvicorn', check[-1])
                 self.assertIn('sudo reboot', result.stdout)
 

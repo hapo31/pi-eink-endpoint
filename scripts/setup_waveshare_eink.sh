@@ -54,7 +54,10 @@ echo "Installing API and Waveshare Python dependencies..."
 "${SUDO[@]}" apt-get install -y \
     python3 \
     python3-fastapi \
+    python3-qrcode \
+    fonts-dejavu-core \
     python3-uvicorn \
+    npm \
     python3-pil \
     python3-numpy \
     python3-gpiozero \
@@ -62,6 +65,9 @@ echo "Installing API and Waveshare Python dependencies..."
     python3-rpi.gpio \
     python3-spidev \
     rsync
+
+echo "Installing Codex App Server CLI ${CODEX_CLI_VERSION:-0.153.0}..."
+"${SUDO[@]}" npm install --global "@openai/codex@${CODEX_CLI_VERSION:-0.153.0}"
 
 echo "Enabling SPI0..."
 "${SUDO[@]}" raspi-config nonint do_spi 0

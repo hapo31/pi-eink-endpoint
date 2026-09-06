@@ -102,7 +102,8 @@ class QueueTests(unittest.TestCase):
     def test_api_documentation(self):
         self.assertEqual(self.client.get('/docs').status_code, 200)
         schema = self.client.get('/openapi.json').json()
-        for path in ('/text', '/image'):
+        for path in ('/text', '/image', '/codex/display/start', '/codex/login/start',
+                     '/codex/refresh'):
             self.assertIn('202', schema['paths'][path]['post']['responses'])
         self.assertIn(
             'application/octet-stream',

@@ -1,17 +1,22 @@
 import io
 import json
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from pathlib import Path
 from queue import Queue
-from threading import Thread
+from threading import Lock, Thread
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from PIL import Image, ImageDraw, ImageOps
 from starlette.concurrency import run_in_threadpool
+
+from pi_eink_endpoint.codex.client import AppServerClient
+from pi_eink_endpoint.codex.router import router as codex_router
+from pi_eink_endpoint.codex.service import CodexService
 
 WAVESHARE_LIB = (
     Path(__file__).parent / "waveshare_e_paper/RaspberryPi_JetsonNano/python/lib"
@@ -27,8 +32,27 @@ logger = logging.getLogger(__name__)
 class RenderWorker:
     def __init__(self):
         self.render_queue = Queue()
+        self._automatic_lock = Lock()
+        self._automatic_job = None
+        self._automatic_queued = False
         self.render_worker = Thread(target=self._render_jobs, name="eink-render", daemon=True)
         self.render_worker.start()
+
+    def enqueue_automatic(self, image):
+        """Keep only the newest waiting Codex image; FIFO API jobs are untouched."""
+        with self._automatic_lock:
+            self._automatic_job = image.copy()
+            if not self._automatic_queued:
+                self._automatic_queued = True
+                self.render_queue.put((self._render_automatic, None))
+
+    def _render_automatic(self, _):
+        with self._automatic_lock:
+            image = self._automatic_job
+            self._automatic_job = None
+            self._automatic_queued = False
+        if image is not None:
+            update_eink_from_monochrome(image)
 
     def _render_jobs(self):
         while True:
@@ -53,9 +77,21 @@ class RenderWorker:
 async def lifespan(app: FastAPI):
     worker = RenderWorker()
     app.state.render_worker = worker
+    state_dir = Path(os.environ.get("CODEX_STATE_DIR", "/var/lib/pi-eink-endpoint/codex"))
+    state_path = Path(os.environ.get("CODEX_DISPLAY_STATE_PATH", state_dir / "display-state.json"))
+    client = AppServerClient(os.environ.get("CODEX_EXECUTABLE", "codex"), state_dir)
+    service = CodexService(
+        client,
+        worker.enqueue_automatic,
+        state_path=state_path,
+        timezone_name=os.environ.get("CODEX_TIMEZONE", "Asia/Tokyo"),
+    )
+    app.state.codex_service = service
+    await service.start()
     try:
         yield
     finally:
+        await service.close()
         await run_in_threadpool(worker.close)
 
 
@@ -64,6 +100,7 @@ def create_app() -> FastAPI:
     # Bookworm's FastAPI 0.92 does not forward the lifespan constructor argument.
     # Register on its Starlette router, which supports the same lifespan protocol.
     app.router.lifespan_context = lifespan
+    app.include_router(codex_router)
 
     @app.post(
         "/text",
@@ -153,6 +190,17 @@ def update_eink_from_image(binary_image: bytes):
     epd.sleep()
 
     return {"message": "E-ink display updated from image"}
+
+
+def update_eink_from_monochrome(image: Image.Image):
+    """Display an application-rendered monochrome screen through the shared worker."""
+    epd = epd2in9_V3.EPD()
+    epd.init()
+    # Keep Codex screens separate from the 4-gray image-upload path.
+    image = image.convert("1")
+    epd.display(epd.getbuffer(image))
+    epd.sleep()
+    return {"message": "E-ink monochrome display updated"}
 
 
 app = create_app()
