@@ -24,7 +24,7 @@ fi
 ssh -i "$RASPI_KEY_PATH" "$RASPI_USER@$RASPI_HOST" 'bash -s' <<'REMOTE_COMMAND'
 set -euo pipefail
 
-cd "$HOME/eink-endpoint"
+cd "$HOME/pi-eink-endpoint"
 git pull --ff-only
 git submodule update --init --recursive
 SERVICE_USER="$(id -un)"

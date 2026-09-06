@@ -95,8 +95,8 @@ GPIO を使用します。GPIO 番号は BCM 番号です。HAT や接続基板�
 Pi 3 から `origin` にアクセスできる SSH 鍵または認証情報をあらかじめ設定してください。
 
 ```bash
-git clone --recurse-submodules https://github.com/hapo31/pi-eink-endpoint.git "$HOME/eink-endpoint"
-cd "$HOME/eink-endpoint"
+git clone --recurse-submodules https://github.com/hapo31/pi-eink-endpoint.git "$HOME/pi-eink-endpoint"
+cd "$HOME/pi-eink-endpoint"
 ```
 
 取得済みのリポジトリでは、Pi 3 上のリポジトリルートでサブモジュールを初期化します。
@@ -132,7 +132,7 @@ ssh -i "$RASPI_KEY_PATH" "$RASPI_USER@$RASPI_HOST"
 ### 更新のデプロイ
 
 変更をデプロイ元 PC で commit・push してから、ローカルのリポジトリルートで実行します。
-`deploy.sh` は `.env` を読み込み、Pi 3 上の `$HOME/eink-endpoint` で `git pull --ff-only` と
+`deploy.sh` は `.env` を読み込み、Pi 3 上の `$HOME/pi-eink-endpoint` で `git pull --ff-only` と
 サブモジュールの更新を行った後、service を再起動します。Pi 3 のログインユーザーには、
 `pi-eink-endpoint@$USER.service` を再起動できる `sudo` 権限が必要です。
 
@@ -153,7 +153,7 @@ Pi 3 上のアプリコードは直接編集せず、デプロイ元で修正し
 ユニットはホームディレクトリが `/home/<user>` にある構成を前提としています。
 
 ```bash
-cd "$HOME/eink-endpoint"
+cd "$HOME/pi-eink-endpoint"
 sudo cp scripts/pi-eink-endpoint@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now "pi-eink-endpoint@$USER.service"
@@ -173,7 +173,7 @@ Pi 3 で上記の `cp` と `daemon-reload` を再実行してからデプロイ�
 
 ```bash
 sudo systemctl stop "pi-eink-endpoint@$USER.service"
-cd "$HOME/eink-endpoint"
+cd "$HOME/pi-eink-endpoint"
 /usr/bin/python3 -m uvicorn pi_eink_endpoint.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
