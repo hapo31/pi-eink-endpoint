@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 from pathlib import Path
 from typing import Callable
 
@@ -14,6 +15,8 @@ from .client import AppServerClient, AppServerError
 from .models import Quota, normalize_quota
 from .render import render_login, render_quota
 
+
+logger = logging.getLogger(__name__)
 
 AUTH_MODES = {"chatgpt", "chatgptAuthTokens"}
 
@@ -119,6 +122,7 @@ class CodexService:
     async def _ensure_login(self):
         if self.login_id is not None or self._closed:
             return
+        stage = "account/read"
         self.status = "starting_login"
         self.last_error = None
         try:
@@ -128,6 +132,7 @@ class CodexService:
                 if self.display_enabled:
                     self._schedule_refresh()
                 return
+            stage = "account/login/start"
             result = await self.client.request("account/login/start", {"type": "chatgptDeviceCode"})
             login_id = result.get("loginId") if isinstance(result, dict) else None
             verification_url = result.get("verificationUrl") if isinstance(result, dict) else None
@@ -139,7 +144,9 @@ class CodexService:
             self.user_code = user_code
             self.status = "awaiting_login"
             self.enqueue_image(render_login(verification_url, user_code))
-        except Exception:
+        except Exception as error:
+            rpc_code = error.code if isinstance(error, AppServerError) else None
+            logger.warning("Codex device-code login failed (stage=%s, error=%s, rpc_code=%s, executable=%r)", stage, type(error).__name__, rpc_code, getattr(self.client, "executable", None))
             self.login_id = None
             self.status = "auth_required"
             self._record_error("Login could not start", login=True)

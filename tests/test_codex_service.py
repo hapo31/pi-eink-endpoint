@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from pi_eink_endpoint.codex.client import AppServerError
 from pi_eink_endpoint.codex.render import render_login, render_quota
 from pi_eink_endpoint.codex.service import CodexService
 
@@ -11,6 +12,7 @@ class FakeClient:
     def __init__(self):
         self.notifications = asyncio.Queue()
         self.auth_type = None
+        self.login_error = None
         self.calls = []
         self.closed = False
 
@@ -22,6 +24,8 @@ class FakeClient:
         if method == "account/read":
             return {"type": self.auth_type}
         if method == "account/login/start":
+            if self.login_error:
+                raise self.login_error
             return {
                 "loginId": "current-login",
                 "verificationUrl": "https://auth.openai.com/codex/device",
@@ -86,6 +90,19 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         status = self.service.snapshot()
         self.assertIsNotNone(status["next_update_at"])
         self.assertNotIn("next_update_monotonic", status)
+
+    async def test_login_failure_logs_safe_diagnostic_metadata(self):
+        self.client.login_error = AppServerError(-32001)
+        with self.assertLogs("pi_eink_endpoint.codex.service", level="WARNING") as logs:
+            state = self.service.start_login()
+            self.assertEqual(state["status"], "starting_login")
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+        self.assertEqual(self.service.status, "auth_required")
+        output = "\n".join(logs.output)
+        self.assertIn("stage=account/login/start", output)
+        self.assertIn("rpc_code=-32001", output)
+        self.assertNotIn("ABCD-1234", output)
 
     async def test_login_only_never_starts_periodic_refresh(self):
         state = self.service.start_login()

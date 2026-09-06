@@ -8,8 +8,12 @@ Protocol: https://learn.chatgpt.com/docs/app-server
 import asyncio
 from contextlib import suppress
 import json
+import logging
 import os
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 
 class AppServerError(RuntimeError):
@@ -33,6 +37,7 @@ class AppServerClient:
         self._lifecycle = asyncio.Lock()
         self._writes = asyncio.Lock()
         self._ready = False
+        self._stderr_bytes = 0
 
     async def start(self):
         async with self._lifecycle:
@@ -40,6 +45,7 @@ class AppServerClient:
                 return
             await self._close()
             self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            self._stderr_bytes = 0
             self.state_dir.chmod(0o700)
             env = dict(os.environ, CODEX_HOME=str(self.state_dir.resolve()))
             self._process = await asyncio.create_subprocess_exec(
@@ -57,6 +63,10 @@ class AppServerClient:
                 })
                 await self._send({"method": "initialized"})
                 self._ready = True
+            except Exception as error:
+                await self._close()
+                logger.warning("Codex App Server initialization failed (error=%s, stderr_bytes=%d)", type(error).__name__, self._stderr_bytes)
+                raise
             except BaseException:
                 await self._close()
                 raise
@@ -107,17 +117,17 @@ class AppServerClient:
                         "code": -32601, "message": "Client method not supported"}})
                 elif "method" in message:
                     self.notifications.put_nowait(message)
-        except (ValueError, OSError, ConnectionError):
-            pass
+        except (ValueError, OSError, ConnectionError) as error:
+            logger.warning("Codex App Server stream failed (error=%s)", type(error).__name__)
         finally:
             self._ready = False
             self._fail_pending()
             self.notifications.put_nowait({"method": "client/disconnected", "params": {}})
 
     async def _drain_stderr(self):
-        # Always drain, but never log raw diagnostics: these can contain secrets.
-        while await self._process.stderr.read(8192):
-            pass
+        # Drain without retaining content: diagnostics may contain credentials.
+        while data := await self._process.stderr.read(8192):
+            self._stderr_bytes += len(data)
 
     def _fail_pending(self):
         for future in self._pending.values():
