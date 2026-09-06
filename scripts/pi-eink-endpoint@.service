@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=%i
-WorkingDirectory=/home/%i/eink-endpoint/
+WorkingDirectory=/home/%i/pi-eink-endpoint/
 StateDirectory=pi-eink-endpoint
 UMask=0077
 ExecStart=/usr/bin/python3 -m uvicorn pi_eink_endpoint.main:app --host 0.0.0.0 --port 8000 --workers 1
