@@ -155,8 +155,11 @@ class CodexService:
         await self.client.start()
         if self._notification_task is None or self._notification_task.done():
             self._notification_task = self._spawn(self._notifications())
-        result = await self.client.request("account/read")
-        return result if isinstance(result, dict) else {}
+        result = await self.client.request("account/read", {"refreshToken": False})
+        if not isinstance(result, dict):
+            return {}
+        account = result.get("account")
+        return account if isinstance(account, dict) else {}
 
     def _schedule_refresh(self):
         if self._refresh_task is None or self._refresh_task.done():

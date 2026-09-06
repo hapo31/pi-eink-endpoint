@@ -83,7 +83,10 @@ class AppServerClient:
         self._pending[request_id] = future
         try:
             async with asyncio.timeout(self.timeout):
-                await self._send({"id": request_id, "method": method, "params": params})
+                message = {"id": request_id, "method": method}
+                if params is not None:
+                    message["params"] = params
+                await self._send(message)
                 return await future
         finally:
             self._pending.pop(request_id, None)

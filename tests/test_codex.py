@@ -80,6 +80,8 @@ for line in sys.stdin:
     elif method == 'error':
         print(json.dumps({'id': msg['id'], 'error': {'code': -1, 'message': 'SECRET'}}), flush=True)
         continue
+    elif method == 'without_params':
+        result = 'present' if 'params' in msg else 'omitted'
     elif method == 'first':
         held = msg['id']
         continue
@@ -114,6 +116,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         notification = await self.client.notifications.get()
         self.assertEqual(notification['params']['loginId'], 'fake')
         self.assertEqual(await self.client.request('echo', {'ok': True}), {'ok': True})
+        self.assertEqual(await self.client.request('without_params'), 'omitted')
         self.assertEqual(self.client.state_dir.stat().st_mode & 0o777, 0o700)
 
     async def test_timeout_cancel_and_sanitized_error(self):

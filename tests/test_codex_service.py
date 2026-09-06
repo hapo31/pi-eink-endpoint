@@ -22,7 +22,8 @@ class FakeClient:
     async def request(self, method, params=None):
         self.calls.append((method, params))
         if method == "account/read":
-            return {"type": self.auth_type}
+            account = None if self.auth_type is None else {"type": self.auth_type}
+            return {"account": account, "requiresOpenaiAuth": True}
         if method == "account/login/start":
             if self.login_error:
                 raise self.login_error
@@ -112,6 +113,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.service.display_enabled)
         self.assertIsNone(self.service._periodic_task)
         self.assertEqual(self.service.status, "awaiting_login")
+        self.assertIn(("account/read", {"refreshToken": False}), self.client.calls)
 
 
 class RenderTests(unittest.TestCase):
