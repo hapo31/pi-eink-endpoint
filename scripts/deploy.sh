@@ -1,25 +1,32 @@
 #!/bin/bash
+set -euo pipefail
 
-source .env
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-if [ -z $RASPI_HOST ]; then
-  echo "RASPI_HOST is not set in .env file"
+source "$PROJECT_DIR/.env"
+
+if [[ -z "${RASPI_HOST:-}" ]]; then
+  echo "RASPI_HOST is not set in .env file" >&2
   exit 1
 fi
 
-if [ -z $RASPI_USER ]; then
-  echo "RASPI_USER is not set in .env file"
+if [[ -z "${RASPI_USER:-}" ]]; then
+  echo "RASPI_USER is not set in .env file" >&2
   exit 1
 fi
 
-if [ -z $RASPI_KEY_PATH ]; then
-  echo "RASPI_KEY_PATH is not set in .env file"
+if [[ -z "${RASPI_KEY_PATH:-}" ]]; then
+  echo "RASPI_KEY_PATH is not set in .env file" >&2
   exit 1
 fi
 
-cd "$(dirname "$0")/.."
+ssh -i "$RASPI_KEY_PATH" "$RASPI_USER@$RASPI_HOST" 'bash -s' <<'REMOTE_COMMAND'
+set -euo pipefail
 
-rm -rf dist/*
-find pi_eink_endpoint -type f \( -name '*.py' -o -path '*/assets/*' \) -exec cp --parents {} dist/ \;
-cp scripts/pi-eink-endpoint@.service dist/
-rsync -avz --mkpath --delete dist/ "$RASPI_USER@$RASPI_HOST:/home/${RASPI_USER}/eink-endpoint/dist/" -e "ssh -i $RASPI_KEY_PATH"
+cd "$HOME/eink-endpoint"
+git pull --ff-only
+git submodule update --init --recursive
+SERVICE_USER="$(id -un)"
+sudo systemctl restart "pi-eink-endpoint@$SERVICE_USER.service"
+REMOTE_COMMAND

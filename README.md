@@ -9,7 +9,7 @@ FastAPI + Uvicorn でテキストと画像のリクエストを受け付け、1 
 - Raspberry Pi OS Lite 64-bit（aarch64、以下の手順は Bookworm 以降を想定）
 - Waveshare 2.9 インチ電子ペーパー V3（`epd2in9_V3`、128 × 296 ピクセル）と対応する接続基板
 - Python 3.11 以降、FastAPI、Uvicorn、Pillow、gpiozero、spidev、GPIO バックエンド
-- デプロイ元の PC: Bash、Git、SSH、`--mkpath` オプションに対応する rsync
+- デプロイ元の PC: Bash、Git、SSH
 
 このプロジェクトでは Pi 3 の aarch64 環境を前提とします。OS については
 [Raspberry Pi 公式ドキュメント](https://www.raspberrypi.com/documentation/computers/os.html)を参照してください。
@@ -48,13 +48,13 @@ Pi 3 にリポジトリを clone 済みなら、ルートから `bash scripts/se
 
 スクリプトは次を実行します。
 
-- FastAPI、Uvicorn、Pillow、NumPy、gpiozero、lgpio、RPi.GPIO、spidev と Python 3、デプロイ用の rsync を導入
+- FastAPI、Uvicorn、Pillow、NumPy、gpiozero、lgpio、RPi.GPIO、spidev、Git と Python 3 を導入
 - `raspi-config nonint do_spi 0` で SPI を有効化
 - 指定ユーザーを `gpio` / `spi` グループに追加（既存の所属グループは保持）
 - 指定ユーザーの `/usr/bin/python3` で依存パッケージの import を確認
 
 途中で失敗した場合は停止します。原因を解消して同じコマンドを再実行できます。
-Waveshare ドライバーは後述のサブモジュール取得・デプロイで配置します。
+Waveshare ドライバーは後述のリポジトリ取得時にサブモジュールとして配置します。
 サービス登録と実際の画面更新は、後述の手順で確認してください。
 
 完了後、Pi 3 を再起動します。スクリプトによる自動再起動は行いません。
@@ -91,21 +91,21 @@ GPIO を使用します。GPIO 番号は BCM 番号です。HAT や接続基板�
 
 ## ソースの取得とデプロイ
 
-以下はデプロイ元 PC で実行します。
+初回のみ、Pi 3 にログインしてリポジトリを取得します。GitHub のリポジトリが非公開の場合は、
+Pi 3 から `origin` にアクセスできる SSH 鍵または認証情報をあらかじめ設定してください。
 
 ```bash
-git clone --recurse-submodules https://github.com/hapo31/pi-eink-endpoint.git
-cd pi-eink-endpoint
+git clone --recurse-submodules https://github.com/hapo31/pi-eink-endpoint.git "$HOME/eink-endpoint"
+cd "$HOME/eink-endpoint"
 ```
 
-取得済みのリポジトリでは、ルートディレクトリでサブモジュールを初期化します。
+取得済みのリポジトリでは、Pi 3 上のリポジトリルートでサブモジュールを初期化します。
 
 ```bash
 git submodule update --init --recursive
 ```
 
 Waveshare ドライバーは `pi_eink_endpoint/waveshare_e_paper` に取得されます。
-デプロイ時に Python ファイルをコピーするため、事前にサブモジュールの取得が必要です。
 
 ### 接続先の設定
 
@@ -129,19 +129,20 @@ source .env
 ssh -i "$RASPI_KEY_PATH" "$RASPI_USER@$RASPI_HOST"
 ```
 
-### ファイルの転送
+### 更新のデプロイ
 
-SSH 接続を終了し、デプロイ元 PC のリポジトリルートで実行します。
-`deploy.sh` は実行開始時のディレクトリから `.env` を読むため、ルートで実行してください。
+変更をデプロイ元 PC で commit・push してから、ローカルのリポジトリルートで実行します。
+`deploy.sh` は `.env` を読み込み、Pi 3 上の `$HOME/eink-endpoint` で `git pull --ff-only` と
+サブモジュールの更新を行った後、service を再起動します。Pi 3 のログインユーザーには、
+`pi-eink-endpoint@$USER.service` を再起動できる `sudo` 権限が必要です。
 
 ```bash
-mkdir -p dist
+git push
 bash scripts/deploy.sh
 ```
 
-スクリプトはローカルの `dist/` を作り直し、Python ファイルと systemd ユニットを
-Pi 3 の `/home/<user>/eink-endpoint/dist/` に転送します。転送先は `rsync --delete` で同期されるため、
-このディレクトリはデプロイ専用にします。依存パッケージの導入やサービスの再起動は別途行います。
+`git pull --ff-only` のため、Pi 3 側で未コミットの変更がある場合や履歴が分岐している場合は停止します。
+Pi 3 上のアプリコードは直接編集せず、デプロイ元で修正して push してください。
 
 ## サービスの登録と運用
 
@@ -152,8 +153,8 @@ Pi 3 の `/home/<user>/eink-endpoint/dist/` に転送します。転送先は `r
 ユニットはホームディレクトリが `/home/<user>` にある構成を前提としています。
 
 ```bash
-cd "$HOME/eink-endpoint/dist"
-sudo cp pi-eink-endpoint@.service /etc/systemd/system/
+cd "$HOME/eink-endpoint"
+sudo cp scripts/pi-eink-endpoint@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now "pi-eink-endpoint@$USER.service"
 ```
@@ -165,18 +166,14 @@ systemctl status "pi-eink-endpoint@$USER.service"
 journalctl -u "pi-eink-endpoint@$USER.service" -f
 ```
 
-アプリの再デプロイ後は、Pi 3 でサービスを再起動します。
-ユニットファイルも変更した場合は、先に上記の `cp` と `daemon-reload` を再実行してください。
-
-```bash
-sudo systemctl restart "pi-eink-endpoint@$USER.service"
-```
+`deploy.sh` はアプリ更新後に service を再起動します。ユニットファイルを変更した場合は、
+Pi 3 で上記の `cp` と `daemon-reload` を再実行してからデプロイしてください。
 
 手動で動作を確認する場合は、同じディスプレイを操作するサービスを止めてから実行します。
 
 ```bash
 sudo systemctl stop "pi-eink-endpoint@$USER.service"
-cd "$HOME/eink-endpoint/dist"
+cd "$HOME/eink-endpoint"
 /usr/bin/python3 -m uvicorn pi_eink_endpoint.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
@@ -237,13 +234,13 @@ HTTP `202 Accepted` と `{"message": "E-ink update queued"}` を返します。
 
 | 症状 | 確認すること |
 | --- | --- |
-| `No module named waveshare_epd` | サブモジュールを初期化してから再デプロイしたか |
+| `No module named waveshare_epd` | Pi 3 上でサブモジュールを初期化してから再デプロイしたか |
 | `fastapi` / `uvicorn` / `PIL` / `gpiozero` / `spidev` などの import エラー | Pi 3 に依存パッケージを導入し、`/usr/bin/python3` を使っているか |
 | `/dev/spidev0.0` がない | SPI を有効にして再起動したか |
 | GPIO / SPI の権限エラー | サービス実行ユーザーが `gpio` / `spi` グループに所属しているか |
 | 接続できない | 接続先が Pi 3 のアドレスとポート `8000` になっているか、サービスが起動しているか |
 | `202` なのに画面が更新されない | `journalctl` の描画エラー、パネルの型番、配線を確認する |
-| デプロイ時の `--mkpath` エラー | デプロイ元の rsync がこのオプションに対応しているか |
+| デプロイ時の `git pull` エラー | Pi 3 側の作業ツリーに未コミット変更・履歴の分岐がないか、Pi 3 から `origin` にアクセスできるか |
 
 ## 開発時の確認
 

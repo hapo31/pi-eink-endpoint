@@ -11,7 +11,7 @@ Run on the Raspberry Pi 3 with Raspberry Pi OS (Bookworm or later).
 Installs Python dependencies, enables SPI, and grants GPIO/SPI access.
 The user defaults to the invoking user (SUDO_USER when using sudo).
 When running directly as root, specify the non-root service user.
-The Waveshare driver is supplied separately by the application deployment.
+The Waveshare driver is supplied by the application repository.
 Reboot after setup; this script does not reboot or start the display service.
 USAGE
 }
@@ -64,7 +64,7 @@ echo "Installing API and Waveshare Python dependencies..."
     python3-lgpio \
     python3-rpi.gpio \
     python3-spidev \
-    rsync
+    git
 
 echo "Installing Codex App Server CLI ${CODEX_CLI_VERSION:-0.153.0}..."
 "${SUDO[@]}" npm install --global "@openai/codex@${CODEX_CLI_VERSION:-0.153.0}"
