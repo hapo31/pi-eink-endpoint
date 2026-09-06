@@ -89,17 +89,19 @@ def render_login(verification_url: str | None, user_code: str | None, *, error: 
     qr.add_data(verification_url)
     qr.make(fit=True)
     modules = len(qr.get_matrix())
-    box_size = max(1, min(3, 108 // modules))
+    box_size = max(1, min(3, 102 // modules))
     qr.box_size = box_size
-    qr_image = qr.make_image(fill_color=0, back_color=1).convert("1")
+    qr_image = qr.make_image(fill_color="black", back_color="white").convert("1")
     # Never resize after generation: QR modules stay square integer pixels.
     image.paste(qr_image, (7, 25))
-    _text(draw, (124, 33), "Open URL, enter code:", 10)
-    _text(draw, (124, 48), user_code, 18)
-    _text(draw, (124, 76), "Use another device", 10)
-    _text(draw, (124, 89), "if QR cannot scan.", 10)
-    # URLs can be too wide, but keeping their beginning makes a manual fallback possible.
-    _text(draw, (7, 116), verification_url[:50], 8)
+    # The fixed device-login URL fits in the right-hand column without obscuring the QR code.
+    manual_url = verification_url.removeprefix("https://").removeprefix("http://")
+    _text(draw, (124, 32), "Or open this URL:", 10)
+    _text(draw, (124, 45), manual_url[:31], 8)
+    if len(manual_url) > 31:
+        _text(draw, (124, 55), manual_url[31:62], 8)
+    _text(draw, (124, 72), "Then enter code:", 10)
+    _text(draw, (124, 86), user_code, 18)
     if error:
-        _text(draw, (124, 103), error[:27], 8)
+        _text(draw, (124, 110), error[:27], 8)
     return image

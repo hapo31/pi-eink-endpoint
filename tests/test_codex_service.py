@@ -125,3 +125,8 @@ class RenderTests(unittest.TestCase):
             self.assertEqual(image.size, (296, 128))
             self.assertIn(0, set(image.get_flattened_data()))
             self.assertTrue(set(image.get_flattened_data()) <= {0, 1, 255})
+
+    def test_login_qr_has_distinct_black_and_white_modules(self):
+        login = render_login("https://auth.openai.com/codex/device", "ABCD-1234")
+        qr_area = login.crop((7, 25, 106, 124))
+        self.assertEqual(set(qr_area.get_flattened_data()), {0, 255})
