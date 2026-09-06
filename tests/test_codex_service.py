@@ -99,6 +99,22 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(status["next_update_at"])
         self.assertNotIn("next_update_monotonic", status)
 
+    async def test_quota_is_fully_refreshed_every_fourth_update(self):
+        self.service.display_enabled = True
+        for _ in range(5):
+            await self.service._refresh()
+        self.assertEqual([partial for _, partial in self.images], [False, True, True, True, False])
+
+    async def test_refresh_forces_a_full_update(self):
+        self.service.display_enabled = True
+        await self.service._refresh()
+        await self.service._refresh()
+        self.assertTrue(self.images[-1][1])
+
+        self.assertTrue(self.service.refresh())
+        await self.service._refresh_task
+        self.assertFalse(self.images[-1][1])
+
     async def test_login_failure_logs_safe_diagnostic_metadata(self):
         self.client.login_error = AppServerError(-32001)
         with self.assertLogs("pi_eink_endpoint.codex.service", level="WARNING") as logs:

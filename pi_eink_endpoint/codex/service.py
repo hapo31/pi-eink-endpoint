@@ -19,6 +19,7 @@ from .render import render_login, render_quota
 logger = logging.getLogger(__name__)
 
 AUTH_MODES = {"chatgpt", "chatgptAuthTokens"}
+FULL_REFRESH_EVERY = 4
 
 
 class CodexService:
@@ -52,6 +53,8 @@ class CodexService:
         self._periodic_task: asyncio.Task | None = None
         self._refresh_task: asyncio.Task | None = None
         self._start_task: asyncio.Task | None = None
+        self._quota_refresh_count = 0
+        self._force_full_refresh = False
         self._quota_screen_visible = False
         self._closed = False
 
@@ -99,6 +102,7 @@ class CodexService:
     def refresh(self) -> bool:
         if not self.display_enabled or self.login_id is not None or self.status in {"auth_required", "starting_login"}:
             return False
+        self._force_full_refresh = True
         self._schedule_refresh()
         return True
 
@@ -197,12 +201,18 @@ class CodexService:
 
     def _show_login(self, *, error: str | None = None):
         self._quota_screen_visible = False
+        self._quota_refresh_count = 0
+        self._force_full_refresh = False
         self.enqueue_image(render_login(self.verification_url, self.user_code, error=error), partial=False)
 
     def _show_quota(self, *, error: str | None = None):
         # The first quota screen initializes the panel's base buffer. Later
         # snapshots use the partial-update waveform for its changing fields.
-        partial = self._quota_screen_visible
+        full_refresh = (not self._quota_screen_visible or self._force_full_refresh
+                        or self._quota_refresh_count + 1 >= FULL_REFRESH_EVERY)
+        partial = not full_refresh
+        self._quota_refresh_count = 0 if full_refresh else self._quota_refresh_count + 1
+        self._force_full_refresh = False
         self._quota_screen_visible = True
         self.enqueue_image(render_quota(self.quota, self.timezone_name, error=error), partial=partial)
 
