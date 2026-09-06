@@ -8,6 +8,7 @@ import types
 import unittest
 from unittest.mock import patch
 
+from PIL import Image
 from fastapi.testclient import TestClient
 
 # Load the endpoint without importing Raspberry Pi GPIO dependencies.
@@ -101,6 +102,46 @@ class QueueTests(unittest.TestCase):
 
     def test_api_documentation(self):
         self.assertEqual(self.client.get('/docs').status_code, 200)
+    def test_codex_base_and_partial_updates_use_matching_driver_methods(self):
+        calls = []
+
+        class FakeEPD:
+            height, width = 296, 128
+
+            def init(self):
+                calls.append("init")
+
+            def getbuffer(self, image):
+                assert image.mode == "1"
+                calls.append("getbuffer")
+                return [255]
+
+            def display_Base(self, buffer):
+                assert buffer == [255]
+                calls.append("base")
+
+            def display_Partial(self, buffer):
+                assert buffer == [255]
+                calls.append("partial")
+
+            def sleep(self):
+                calls.append("sleep")
+
+        screen = Image.new("1", (296, 128), 1)
+        with patch.object(endpoint, "epd2in9_V3", types.SimpleNamespace(EPD=FakeEPD)):
+            self.assertEqual(
+                endpoint.update_eink_from_monochrome(screen),
+                {"message": "E-ink monochrome display updated", "partial": False},
+            )
+            self.assertEqual(calls, ["init", "getbuffer", "base", "sleep"])
+            calls.clear()
+            self.assertEqual(
+                endpoint.update_eink_from_monochrome(screen, partial=True),
+                {"message": "E-ink monochrome display updated", "partial": True},
+            )
+        self.assertEqual(calls, ["init", "getbuffer", "partial", "sleep"])
+
+    def test_api_documentation_schema(self):
         schema = self.client.get('/openapi.json').json()
         for path in ('/text', '/image', '/codex/display/start', '/codex/login/start',
                      '/codex/refresh'):

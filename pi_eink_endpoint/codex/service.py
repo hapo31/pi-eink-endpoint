@@ -52,6 +52,7 @@ class CodexService:
         self._periodic_task: asyncio.Task | None = None
         self._refresh_task: asyncio.Task | None = None
         self._start_task: asyncio.Task | None = None
+        self._quota_screen_visible = False
         self._closed = False
 
     async def start(self):
@@ -143,7 +144,7 @@ class CodexService:
             self.verification_url = verification_url
             self.user_code = user_code
             self.status = "awaiting_login"
-            self.enqueue_image(render_login(verification_url, user_code))
+            self._show_login()
         except Exception as error:
             rpc_code = error.code if isinstance(error, AppServerError) else None
             logger.warning("Codex device-code login failed (stage=%s, error=%s, rpc_code=%s, executable=%r)", stage, type(error).__name__, rpc_code, getattr(self.client, "executable", None))
@@ -175,7 +176,7 @@ class CodexService:
             self.quota = normalize_quota(result if isinstance(result, dict) else {}, timezone_name=self.timezone_name)
             self.status = "ready"
             self.last_error = None
-            self.enqueue_image(render_quota(self.quota, self.timezone_name))
+            self._show_quota()
         except AppServerError:
             # A rejected authenticated request requires a fresh device-code login.
             self.status = "auth_required"
@@ -189,10 +190,21 @@ class CodexService:
         if self.quota is not None:
             self.quota = self.quota.mark_stale()
             self.status = "auth_required" if login else "stale"
-            self.enqueue_image(render_quota(self.quota, self.timezone_name, error=message))
+            self._show_quota(error=message)
         else:
             self.status = "auth_required" if login else "error"
-            self.enqueue_image(render_login(self.verification_url, self.user_code, error=message))
+            self._show_login(error=message)
+
+    def _show_login(self, *, error: str | None = None):
+        self._quota_screen_visible = False
+        self.enqueue_image(render_login(self.verification_url, self.user_code, error=error), partial=False)
+
+    def _show_quota(self, *, error: str | None = None):
+        # The first quota screen initializes the panel's base buffer. Later
+        # snapshots use the partial-update waveform for its changing fields.
+        partial = self._quota_screen_visible
+        self._quota_screen_visible = True
+        self.enqueue_image(render_quota(self.quota, self.timezone_name, error=error), partial=partial)
 
     async def _periodic(self):
         due = self.monotonic() + self.interval

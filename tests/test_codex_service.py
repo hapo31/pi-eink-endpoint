@@ -54,11 +54,14 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.images = []
         self.service = CodexService(
             self.client,
-            self.images.append,
+            self._enqueue_image,
             state_path=Path(self.temp.name) / "state.json",
             interval=3600,
         )
         self.addAsyncCleanup(self.service.close)
+
+    def _enqueue_image(self, image, *, partial=False):
+        self.images.append((image, partial))
 
     async def test_display_login_completion_and_quota_refresh(self):
         self.assertFalse(self.service.display_enabled)
@@ -70,7 +73,8 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
         self.assertEqual(self.service.status, "awaiting_login")
         self.assertEqual(self.service.login_id, "current-login")
-        self.assertEqual(self.images[-1].size, (296, 128))
+        self.assertEqual(self.images[-1][0].size, (296, 128))
+        self.assertFalse(self.images[-1][1])
         self.assertFalse(self.service.refresh())
 
         await self.client.notifications.put({
@@ -88,6 +92,9 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.service.status, "ready")
         self.assertEqual(self.service.quota.five_hour.remaining_percent, 75)
         self.assertEqual(self.service.quota.available_resets, 0)
+        self.assertFalse(self.images[-1][1])
+        await self.service._refresh()
+        self.assertTrue(self.images[-1][1])
         status = self.service.snapshot()
         self.assertIsNotNone(status["next_update_at"])
         self.assertNotIn("next_update_monotonic", status)

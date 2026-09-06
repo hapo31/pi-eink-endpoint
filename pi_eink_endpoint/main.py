@@ -38,21 +38,22 @@ class RenderWorker:
         self.render_worker = Thread(target=self._render_jobs, name="eink-render", daemon=True)
         self.render_worker.start()
 
-    def enqueue_automatic(self, image):
+    def enqueue_automatic(self, image, *, partial=False):
         """Keep only the newest waiting Codex image; FIFO API jobs are untouched."""
         with self._automatic_lock:
-            self._automatic_job = image.copy()
+            self._automatic_job = (image.copy(), partial)
             if not self._automatic_queued:
                 self._automatic_queued = True
                 self.render_queue.put((self._render_automatic, None))
 
     def _render_automatic(self, _):
         with self._automatic_lock:
-            image = self._automatic_job
+            job = self._automatic_job
             self._automatic_job = None
             self._automatic_queued = False
-        if image is not None:
-            update_eink_from_monochrome(image)
+        if job is not None:
+            image, partial = job
+            update_eink_from_monochrome(image, partial=partial)
 
     def _render_jobs(self):
         while True:
@@ -192,15 +193,20 @@ def update_eink_from_image(binary_image: bytes):
     return {"message": "E-ink display updated from image"}
 
 
-def update_eink_from_monochrome(image: Image.Image):
-    """Display an application-rendered monochrome screen through the shared worker."""
+def update_eink_from_monochrome(image: Image.Image, *, partial: bool = False):
+    """Display a Codex screen, using a partial waveform after its base frame."""
     epd = epd2in9_V3.EPD()
     epd.init()
     # Keep Codex screens separate from the 4-gray image-upload path.
     image = image.convert("1")
-    epd.display(epd.getbuffer(image))
+    buffer = epd.getbuffer(image)
+    if partial:
+        epd.display_Partial(buffer)
+    else:
+        # Populate both controller buffers before any later partial refreshes.
+        epd.display_Base(buffer)
     epd.sleep()
-    return {"message": "E-ink monochrome display updated"}
+    return {"message": "E-ink monochrome display updated", "partial": partial}
 
 
 app = create_app()
