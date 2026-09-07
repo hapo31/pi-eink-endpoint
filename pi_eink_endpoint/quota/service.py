@@ -50,6 +50,7 @@ class QuotaDisplay:
         self._periodic_task = self._refresh_task = self._start_task = None
         self._quota_refresh_count = 0
         self._force_full_refresh = self._quota_screen_visible = False
+        self._last_quota_image = None
         self.closed = False
 
     async def start(self):
@@ -105,16 +106,39 @@ class QuotaDisplay:
         self._quota_screen_visible = False
         self._quota_refresh_count = 0
         self._force_full_refresh = False
+        self._last_quota_image = None
         self.enqueue_image(image, partial=False)
 
     def show_quota(self, image):
         """Apply the panel refresh policy to an already-rendered quota frame."""
         full = (not self._quota_screen_visible or self._force_full_refresh or
+                self._has_black_to_white_transition(image) or
                 self._quota_refresh_count + 1 >= FULL_REFRESH_EVERY)
         self._quota_refresh_count = 0 if full else self._quota_refresh_count + 1
         self._force_full_refresh = False
         self._quota_screen_visible = True
+        self._last_quota_image = image.convert("1").copy()
         self.enqueue_image(image, partial=not full)
+
+    def _has_black_to_white_transition(self, image):
+        """Return whether a partial waveform would need to erase black pixels.
+
+        The 2.9-inch V3's partial waveform leaves visible residue when pixels
+        transition from black to white. Its partial API covers the entire
+        panel, so a base refresh is the reliable way to clean affected gauge
+        and changing-number areas.
+        """
+        if self._last_quota_image is None:
+            return False
+        current = image.convert("1")
+        if current.size != self._last_quota_image.size:
+            return True
+        return any(
+            previous == 0 and next_pixel != 0
+            for previous, next_pixel in zip(
+                self._last_quota_image.get_flattened_data(), current.get_flattened_data()
+            )
+        )
 
     def spawn(self, coroutine):
         return asyncio.create_task(coroutine)

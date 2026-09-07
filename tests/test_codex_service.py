@@ -3,9 +3,12 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from PIL import Image
+
 from pi_eink_endpoint.codex.client import AppServerError
 from pi_eink_endpoint.codex.render import render_login, render_quota
 from pi_eink_endpoint.codex.service import CodexService
+from pi_eink_endpoint.quota.service import QuotaDisplay
 
 
 class FakeClient:
@@ -114,6 +117,30 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.service.refresh())
         await self.service._refresh_task
         self.assertFalse(self.images[-1][1])
+
+    def test_black_to_white_transition_uses_base_refresh(self):
+        images = []
+
+        async def no_op():
+            pass
+
+        display = QuotaDisplay(
+            lambda image, *, partial=False: images.append(partial),
+            state_path=Path(self.temp.name) / "transition-state.json",
+            timezone_name="Asia/Tokyo",
+            interval=3600,
+            prepare=no_op,
+            refresh_quota=no_op,
+        )
+        white = Image.new("1", (296, 128), 1)
+        black = white.copy()
+        black.putpixel((60, 30), 0)
+
+        display.show_quota(white)  # Initial base frame.
+        display.show_quota(black)  # White-to-black is safe for partial refresh.
+        display.show_quota(white)  # Clean the black-to-white transition.
+
+        self.assertEqual(images, [False, True, False])
 
     async def test_login_failure_logs_safe_diagnostic_metadata(self):
         self.client.login_error = AppServerError(-32001)
