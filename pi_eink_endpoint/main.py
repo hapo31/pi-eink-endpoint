@@ -11,16 +11,15 @@ from threading import Lock, Thread
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from PIL import Image
-
-from pi_eink_endpoint.display import WaveshareDisplay
 from starlette.concurrency import run_in_threadpool
 
-from pi_eink_endpoint.codex.client import AppServerClient
-from pi_eink_endpoint.codex.router import router as codex_router
-from pi_eink_endpoint.codex.service import CodexService
 from pi_eink_endpoint.claude.client import ClaudeClient
 from pi_eink_endpoint.claude.router import router as claude_router
 from pi_eink_endpoint.claude.service import ClaudeService
+from pi_eink_endpoint.codex.client import AppServerClient
+from pi_eink_endpoint.codex.router import router as codex_router
+from pi_eink_endpoint.codex.service import CodexService
+from pi_eink_endpoint.display import WaveshareDisplay
 
 WAVESHARE_LIB = (
     Path(__file__).parent / "waveshare_e_paper/RaspberryPi_JetsonNano/python/lib"
@@ -28,7 +27,6 @@ WAVESHARE_LIB = (
 sys.path.insert(0, str(WAVESHARE_LIB))
 
 from waveshare_epd import epd2in9_V3
-
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +37,9 @@ class RenderWorker:
         self._automatic_lock = Lock()
         self._automatic_job = None
         self._automatic_queued = False
-        self.render_worker = Thread(target=self._render_jobs, name="eink-render", daemon=True)
+        self.render_worker = Thread(
+            target=self._render_jobs, name="eink-render", daemon=True
+        )
         self.render_worker.start()
 
     def enqueue_automatic(self, image, *, partial=False):
@@ -82,22 +82,32 @@ class RenderWorker:
 async def lifespan(app: FastAPI):
     worker = RenderWorker()
     app.state.render_worker = worker
-    state_dir = Path(os.environ.get("CODEX_STATE_DIR", "/var/lib/pi-eink-endpoint/codex"))
-    state_path = Path(os.environ.get("CODEX_DISPLAY_STATE_PATH", state_dir / "display-state.json"))
+    state_dir = Path(
+        os.environ.get("CODEX_STATE_DIR", "/var/lib/pi-eink-endpoint/codex")
+    )
+    state_path = Path(
+        os.environ.get("CODEX_DISPLAY_STATE_PATH", state_dir / "display-state.json")
+    )
     client = AppServerClient(os.environ.get("CODEX_EXECUTABLE", "codex"), state_dir)
-    service = CodexService(
+    codex = CodexService(
         client,
         worker.enqueue_automatic,
         state_path=state_path,
         timezone_name=os.environ.get("CODEX_TIMEZONE", "Asia/Tokyo"),
     )
-    app.state.codex_service = service
-    await service.start()
-    claude_state_dir = Path(os.environ.get("CLAUDE_STATE_DIR", "/var/lib/pi-eink-endpoint/claude"))
+    app.state.codex_service = codex
+    await codex.start()
+    claude_state_dir = Path(
+        os.environ.get("CLAUDE_STATE_DIR", "/var/lib/pi-eink-endpoint/claude")
+    )
     claude = ClaudeService(
         ClaudeClient(os.environ.get("CLAUDE_EXECUTABLE", "claude"), claude_state_dir),
         worker.enqueue_automatic,
-        state_path=Path(os.environ.get("CLAUDE_DISPLAY_STATE_PATH", claude_state_dir / "display-state.json")),
+        state_path=Path(
+            os.environ.get(
+                "CLAUDE_DISPLAY_STATE_PATH", claude_state_dir / "display-state.json"
+            )
+        ),
         timezone_name=os.environ.get("CLAUDE_TIMEZONE", "Asia/Tokyo"),
     )
     app.state.claude_service = claude
@@ -105,7 +115,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        await service.close()
+        await codex.close()
         await claude.close()
         await run_in_threadpool(worker.close)
 
@@ -169,7 +179,6 @@ def create_app() -> FastAPI:
         return {"message": "E-ink update queued"}
 
     return app
-
 
 
 # Keep the factory lazy so importing the HTTP app does not open GPIO resources.
