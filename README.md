@@ -48,7 +48,7 @@ Pi 3 にリポジトリを clone 済みなら、ルートから `bash scripts/se
 
 スクリプトは次を実行します。
 
-- FastAPI、Uvicorn、Pillow、NumPy、gpiozero、lgpio、RPi.GPIO、spidev、Git と Python 3 を導入
+- FastAPI、Uvicorn、Pillow、NumPy、gpiozero、lgpio、RPi.GPIO、spidev、Git、Python 3、Codex、Claude Code を導入
 - `raspi-config nonint do_spi 0` で SPI を有効化
 - 指定ユーザーを `gpio` / `spi` グループに追加（既存の所属グループは保持）
 - 指定ユーザーの `/usr/bin/python3` で依存パッケージの import を確認
@@ -258,3 +258,23 @@ uv run --locked python -m unittest discover -s tests -v
 このテストはセットアップのユーザー選択・失敗時の停止と、API の受付応答・処理順・エラー後の継続、
 終了時のキュー処理、API ドキュメントを確認します。描画処理を止めた状態でも受付が完了することを検証します。
 実際のパッケージ導入、SPI 通信、画面表示は Pi 3 で確認してください。
+
+## Claude Code クォータ表示
+
+Codex と同じ操作体系で Claude Code の 5 時間・7 日間クォータを表示できます。
+`scripts/setup_waveshare_eink.sh` が Claude Code をグローバルにインストールします。特定バージョンを使う場合は
+`CLAUDE_CLI_VERSION` を指定してセットアップスクリプトを実行してください（未指定時は `latest`）。
+
+```bash
+curl -X POST http://pi3.local:8000/claude/display/start
+# ログイン画面だけを再表示する場合
+curl -X POST http://pi3.local:8000/claude/login/start
+curl http://pi3.local:8000/claude/status
+curl -X POST http://pi3.local:8000/claude/refresh
+```
+
+未ログイン時は公式 CLI の `claude auth login` が発行する URL を QR コードとして表示します。ブラウザーで認証を
+完了するとクォータ表示へ移ります。認証情報は既定で `/var/lib/pi-eink-endpoint/claude` に保存され、HTTP API の
+応答やログには含めません。`CLAUDE_EXECUTABLE`、`CLAUDE_STATE_DIR`、`CLAUDE_DISPLAY_STATE_PATH`、
+`CLAUDE_TIMEZONE` で実行ファイル、保存先、表示状態、タイムゾーンを変更できます。Codex と Claude の表示を同時に
+有効化すると、それぞれの更新時刻に新しい方の画面が表示されます。

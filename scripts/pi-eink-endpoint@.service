@@ -15,6 +15,9 @@ Environment=PYTHONUNBUFFERED=1
 Environment=CODEX_EXECUTABLE=/usr/local/bin/codex
 Environment=CODEX_STATE_DIR=/var/lib/pi-eink-endpoint/codex
 Environment=CODEX_TIMEZONE=Asia/Tokyo
+Environment=CLAUDE_EXECUTABLE=/usr/local/bin/claude
+Environment=CLAUDE_STATE_DIR=/var/lib/pi-eink-endpoint/claude
+Environment=CLAUDE_TIMEZONE=Asia/Tokyo
 
 [Install]
 WantedBy=multi-user.target

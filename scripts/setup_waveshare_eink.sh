@@ -8,7 +8,7 @@ usage() {
 Usage: bash setup_waveshare_eink.sh [service-user]
 
 Run on the Raspberry Pi 3 with Raspberry Pi OS (Bookworm or later).
-Installs Python dependencies, enables SPI, and grants GPIO/SPI access.
+Installs Python dependencies, Codex, and Claude Code; enables SPI and grants GPIO/SPI access.
 The user defaults to the invoking user (SUDO_USER when using sudo).
 When running directly as root, specify the non-root service user.
 The Waveshare driver is supplied by the application repository.
@@ -68,6 +68,10 @@ echo "Installing API and Waveshare Python dependencies..."
 
 echo "Installing Codex App Server CLI ${CODEX_CLI_VERSION:-0.153.0}..."
 "${SUDO[@]}" npm install --global "@openai/codex@${CODEX_CLI_VERSION:-0.153.0}"
+
+echo "Installing Claude Code CLI ${CLAUDE_CLI_VERSION:-latest}..."
+"${SUDO[@]}" npm install --global \
+    "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION:-latest}"
 
 echo "Enabling SPI0..."
 "${SUDO[@]}" raspi-config nonint do_spi 0

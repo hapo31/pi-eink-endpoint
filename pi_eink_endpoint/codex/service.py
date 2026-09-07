@@ -3,26 +3,20 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
-import json
 import logging
 from pathlib import Path
 from typing import Callable
 
-from zoneinfo import ZoneInfo
-
 from .client import AppServerClient, AppServerError
-from .models import Quota, normalize_quota
+from .models import normalize_quota
 from .render import render_login, render_quota
-
+from pi_eink_endpoint.quota.service import QuotaDisplayService
 
 logger = logging.getLogger(__name__)
 
 AUTH_MODES = {"chatgpt", "chatgptAuthTokens"}
-FULL_REFRESH_EVERY = 4
 
-
-class CodexService:
+class CodexService(QuotaDisplayService):
     """Own one App Server and avoid overlapping quota fetches or login attempts."""
 
     def __init__(
@@ -36,81 +30,17 @@ class CodexService:
         monotonic: Callable[[], float] | None = None,
     ):
         self.client = client
-        self.enqueue_image = enqueue_image
-        self.state_path = Path(state_path)
-        self.timezone_name = timezone_name
-        self.interval = interval
-        self.monotonic = monotonic or __import__("time").monotonic
-        self.status = "idle"
-        self.display_enabled = False
-        self.quota: Quota | None = None
-        self.last_error: str | None = None
-        self.login_id: str | None = None
-        self.verification_url: str | None = None
-        self.user_code: str | None = None
-        self.next_update_at: datetime | None = None
+        self._init_display(
+            enqueue_image, state_path=state_path, timezone_name=timezone_name,
+            interval=interval, monotonic=monotonic,
+        )
         self._notification_task: asyncio.Task | None = None
-        self._periodic_task: asyncio.Task | None = None
-        self._refresh_task: asyncio.Task | None = None
-        self._start_task: asyncio.Task | None = None
-        self._quota_refresh_count = 0
-        self._force_full_refresh = False
-        self._quota_screen_visible = False
-        self._closed = False
-
-    async def start(self):
-        self.display_enabled = self._load_display_enabled()
-        if self.display_enabled:
-            self._begin_display()
-
-    def snapshot(self) -> dict:
-        quota = self.quota
-        window = lambda value: None if value is None else {
-            "remaining_percent": value.remaining_percent,
-            "resets_at": value.resets_at.isoformat() if value.resets_at else None,
-        }
-        return {
-            "status": self.status,
-            "display_enabled": self.display_enabled,
-            "login_pending": self.login_id is not None,
-            "quota": None if quota is None else {
-                "five_hour": window(quota.five_hour),
-                "weekly": window(quota.weekly),
-                "available_resets": quota.available_resets,
-                "fetched_at": quota.fetched_at.isoformat(),
-                "stale": quota.stale,
-            },
-            "last_error": self.last_error,
-            "next_update_at": self.next_update_at.isoformat() if self.next_update_at else None,
-            "timezone": self.timezone_name,
-        }
-
-    def start_display(self) -> dict:
-        if self.display_enabled:
-            return self.snapshot()
-        self.display_enabled = True
-        self._save_display_enabled()
-        self._begin_display()
-        return self.snapshot()
 
     def start_login(self) -> dict:
         if self.login_id is None and self.status != "starting_login":
             self.status = "starting_login"
             self._spawn(self._ensure_login())
         return self.snapshot()
-
-    def refresh(self) -> bool:
-        if not self.display_enabled or self.login_id is not None or self.status in {"auth_required", "starting_login"}:
-            return False
-        self._force_full_refresh = True
-        self._schedule_refresh()
-        return True
-
-    def _begin_display(self):
-        if self._start_task is None or self._start_task.done():
-            self._start_task = self._spawn(self._prepare_display())
-        if self._periodic_task is None or self._periodic_task.done():
-            self._periodic_task = self._spawn(self._periodic())
 
     async def _prepare_display(self):
         try:
@@ -166,10 +96,6 @@ class CodexService:
         account = result.get("account")
         return account if isinstance(account, dict) else {}
 
-    def _schedule_refresh(self):
-        if self._refresh_task is None or self._refresh_task.done():
-            self._refresh_task = self._spawn(self._refresh())
-
     async def _refresh(self):
         if self._closed or not self.display_enabled:
             return
@@ -206,36 +132,7 @@ class CodexService:
         self.enqueue_image(render_login(self.verification_url, self.user_code, error=error), partial=False)
 
     def _show_quota(self, *, error: str | None = None):
-        # The first quota screen initializes the panel's base buffer. Later
-        # snapshots use the partial-update waveform for its changing fields.
-        full_refresh = (not self._quota_screen_visible or self._force_full_refresh
-                        or self._quota_refresh_count + 1 >= FULL_REFRESH_EVERY)
-        partial = not full_refresh
-        self._quota_refresh_count = 0 if full_refresh else self._quota_refresh_count + 1
-        self._force_full_refresh = False
-        self._quota_screen_visible = True
-        self.enqueue_image(render_quota(self.quota, self.timezone_name, error=error), partial=partial)
-
-    async def _periodic(self):
-        due = self.monotonic() + self.interval
-        self._set_next_update(due)
-        while not self._closed and self.display_enabled:
-            delay = max(0, due - self.monotonic())
-            await asyncio.sleep(delay)
-            if self._closed or not self.display_enabled:
-                break
-            self._schedule_refresh()
-            due += self.interval
-            now = self.monotonic()
-            while due <= now:
-                due += self.interval
-            self._set_next_update(due)
-
-    def _set_next_update(self, due: float):
-        seconds = max(0, due - self.monotonic())
-        self.next_update_at = (datetime.now(timezone.utc) + timedelta(seconds=seconds)).astimezone(
-            ZoneInfo(self.timezone_name)
-        )
+        self._panel_update(render_quota(self.quota, self.timezone_name, error=error))
 
     async def _notifications(self):
         while not self._closed:
@@ -269,20 +166,3 @@ class CodexService:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await self.client.close()
-
-    def _spawn(self, coroutine):
-        return asyncio.create_task(coroutine)
-
-    def _load_display_enabled(self) -> bool:
-        try:
-            return json.loads(self.state_path.read_text()).get("display_enabled") is True
-        except (OSError, ValueError, AttributeError):
-            return False
-
-    def _save_display_enabled(self):
-        self.state_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.state_path.parent.chmod(0o700)
-        temporary = self.state_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"display_enabled": True}))
-        temporary.chmod(0o600)
-        temporary.replace(self.state_path)

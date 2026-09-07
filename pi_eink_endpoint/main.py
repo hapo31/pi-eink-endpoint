@@ -17,6 +17,9 @@ from starlette.concurrency import run_in_threadpool
 from pi_eink_endpoint.codex.client import AppServerClient
 from pi_eink_endpoint.codex.router import router as codex_router
 from pi_eink_endpoint.codex.service import CodexService
+from pi_eink_endpoint.claude.client import ClaudeClient
+from pi_eink_endpoint.claude.router import router as claude_router
+from pi_eink_endpoint.claude.service import ClaudeService
 
 WAVESHARE_LIB = (
     Path(__file__).parent / "waveshare_e_paper/RaspberryPi_JetsonNano/python/lib"
@@ -89,10 +92,20 @@ async def lifespan(app: FastAPI):
     )
     app.state.codex_service = service
     await service.start()
+    claude_state_dir = Path(os.environ.get("CLAUDE_STATE_DIR", "/var/lib/pi-eink-endpoint/claude"))
+    claude = ClaudeService(
+        ClaudeClient(os.environ.get("CLAUDE_EXECUTABLE", "claude"), claude_state_dir),
+        worker.enqueue_automatic,
+        state_path=Path(os.environ.get("CLAUDE_DISPLAY_STATE_PATH", claude_state_dir / "display-state.json")),
+        timezone_name=os.environ.get("CLAUDE_TIMEZONE", "Asia/Tokyo"),
+    )
+    app.state.claude_service = claude
+    await claude.start()
     try:
         yield
     finally:
         await service.close()
+        await claude.close()
         await run_in_threadpool(worker.close)
 
 
@@ -102,6 +115,7 @@ def create_app() -> FastAPI:
     # Register on its Starlette router, which supports the same lifespan protocol.
     app.router.lifespan_context = lifespan
     app.include_router(codex_router)
+    app.include_router(claude_router)
 
     @app.post(
         "/text",

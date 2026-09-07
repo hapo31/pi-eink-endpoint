@@ -81,6 +81,10 @@ class SetupTests(unittest.TestCase):
                 for package in ('python3-fastapi', 'python3-uvicorn'):
                     self.assertIn(package, packages)
                 self.assertIn(['npm', 'install', '--global', '@openai/codex@0.153.0'], calls)
+                self.assertIn(
+                    ['npm', 'install', '--global', '@anthropic-ai/claude-code@latest'],
+                    calls,
+                )
                 self.assertIn('import fastapi, uvicorn', check[-1])
                 self.assertIn('sudo reboot', result.stdout)
 
@@ -102,6 +106,17 @@ class SetupTests(unittest.TestCase):
                 self.assertEqual(calls[-1][0], failure)
                 self.assertNotIn('setup complete', result.stdout)
                 self.assertIn('setup failed', result.stderr)
+
+    def test_cli_versions_can_be_pinned(self):
+        result, calls = self.run_setup(
+            CODEX_CLI_VERSION='1.2.3', CLAUDE_CLI_VERSION='4.5.6',
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(['npm', 'install', '--global', '@openai/codex@1.2.3'], calls)
+        self.assertIn(
+            ['npm', 'install', '--global', '@anthropic-ai/claude-code@4.5.6'],
+            calls,
+        )
 
     def test_help_does_not_modify_system(self):
         result, calls = self.run_setup('--help')
