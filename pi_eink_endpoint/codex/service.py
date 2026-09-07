@@ -44,6 +44,7 @@ class CodexService:
             monotonic=monotonic,
         )
         self._notification_task: asyncio.Task | None = None
+        self._login_task: asyncio.Task | None = None
 
     def __getattr__(self, name):
         """Keep status inspection compatible while state is owned by ``display``."""
@@ -72,10 +73,12 @@ class CodexService:
     def start_login(self) -> dict:
         if self.display.login_id is None and self.display.status != "starting_login":
             self.display.status = "starting_login"
-            self.display.spawn(self._ensure_login())
+            self._login_task = self.display.spawn(self._ensure_login())
         return self.snapshot()
 
     async def _prepare_display(self):
+        if self._login_task is not None and not self._login_task.done():
+            return
         try:
             account = await self._account()
         except Exception:
@@ -205,7 +208,10 @@ class CodexService:
 
     async def close(self):
         self.display.closed = True
-        tasks = [task for task in (*self.display.tasks(), self._notification_task) if task]
+        tasks = [
+            task for task in (*self.display.tasks(), self._notification_task, self._login_task)
+            if task
+        ]
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

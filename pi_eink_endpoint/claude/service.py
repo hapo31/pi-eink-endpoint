@@ -19,7 +19,7 @@ class ClaudeService:
     def __init__(self, client, enqueue_image, *, state_path, timezone_name="Asia/Tokyo",
                  interval=900, monotonic=None):
         self.client = client
-        self.renderer = QuotaScreenRenderer(title="CLAUDE")
+        self.renderer = QuotaScreenRenderer(title="CLAUDE", icon_name="claude-icon.xbm")
         self.display = QuotaDisplay(
             enqueue_image,
             state_path=state_path,
@@ -61,6 +61,8 @@ class ClaudeService:
         return self.snapshot()
 
     async def _prepare_display(self):
+        if self._login_task is not None and not self._login_task.done():
+            return
         try:
             if await self.client.authenticated():
                 self.display.status = "idle"

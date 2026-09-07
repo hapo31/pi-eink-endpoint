@@ -28,6 +28,8 @@ def create_router(provider: str) -> APIRouter:
 
     @router.get("/status")
     async def status(request: Request):
+        if display_controller := controller(request):
+            display_controller.activate(provider)
         return service(request).snapshot()
 
     @router.post("/refresh", status_code=HTTPStatus.ACCEPTED)

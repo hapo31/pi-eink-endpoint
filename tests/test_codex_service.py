@@ -226,20 +226,22 @@ class ActiveDisplayControllerTests(unittest.IsolatedAsyncioTestCase):
         self.codex.display.show_quota(Image.new("1", (1, 1), 1))
         self.assertEqual(len(self.images), 1)
 
-        self.controller.start_display("claude")
+        self.controller.start_login("claude")
         self.assertTrue(self.claude.display_enabled)
         self.assertFalse(self.codex.display_enabled)
         self.assertIsNone(self.codex.display.next_update_at)
-        self.assertFalse(self.controller.refresh("codex"))
 
-        self.codex.display.show_quota(Image.new("1", (1, 1), 1))
+        self.assertTrue(self.controller.refresh("codex"))
+        self.assertTrue(self.codex.display_enabled)
+        self.assertFalse(self.claude.display_enabled)
         self.claude.display.show_quota(Image.new("1", (1, 1), 1))
+        self.codex.display.show_quota(Image.new("1", (1, 1), 1))
         self.assertEqual(len(self.images), 2)
         self.assertEqual(
             json.loads((Path(self.temp.name) / "active-display.json").read_text()),
-            {"active_provider": "claude"},
+            {"active_provider": "codex"},
         )
-        self.claude.display.stop_display()
+        self.codex.display.stop_display()
         await asyncio.sleep(0)
 
 

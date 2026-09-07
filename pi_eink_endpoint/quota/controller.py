@@ -32,9 +32,13 @@ class ActiveDisplayController:
         if provider is not None:
             self.start_display(provider)
 
-    def start_display(self, provider: str):
+    def activate(self, provider: str):
+        """Switch the panel to a provider and start its display updates."""
         self._select(provider)
         return self.services[provider].start_display()
+
+    def start_display(self, provider: str):
+        return self.activate(provider)
 
     def start_login(self, provider: str):
         self._select(provider)
@@ -44,8 +48,7 @@ class ActiveDisplayController:
         return self.services[provider].start_login()
 
     def refresh(self, provider: str) -> bool:
-        if self.active_provider != provider:
-            return False
+        self.activate(provider)
         return self.services[provider].refresh()
 
     def enqueue(self, provider: str, image, *, partial: bool = False) -> None:

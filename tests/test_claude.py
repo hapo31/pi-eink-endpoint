@@ -72,3 +72,10 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.service._login_task
         self.assertEqual(self.service.status, "idle")
         self.assertTrue(self.images)
+
+    def test_renderer_displays_official_claude_icon(self):
+        image = self.service.renderer.render_quota(None, "Asia/Tokyo")
+        icon = image.crop((6, 4, 28, 26))
+        self.assertEqual(icon.size, (22, 22))
+        self.assertIn(0, icon.get_flattened_data())
+        self.assertIn(255, icon.get_flattened_data())
