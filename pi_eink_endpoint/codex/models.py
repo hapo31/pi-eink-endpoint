@@ -1,27 +1,10 @@
 """Normalize App Server quota responses without inventing missing limits."""
 
-from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
 from zoneinfo import ZoneInfo
 
-
-@dataclass(frozen=True)
-class Window:
-    remaining_percent: float | None
-    resets_at: datetime | None
-
-
-@dataclass(frozen=True)
-class Quota:
-    five_hour: Window | None
-    weekly: Window | None
-    available_resets: int | None
-    fetched_at: datetime
-    stale: bool = False
-
-    def mark_stale(self):
-        return replace(self, stale=True)
+from pi_eink_endpoint.quota.models import Quota, Window
 
 
 def normalize_quota(response: dict, *, fetched_at: datetime | None = None,
