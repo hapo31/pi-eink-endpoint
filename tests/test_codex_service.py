@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ from PIL import Image
 from pi_eink_endpoint.codex.client import AppServerError
 from pi_eink_endpoint.codex.render import render_login, render_quota
 from pi_eink_endpoint.codex.service import CodexService
+from pi_eink_endpoint.quota.controller import ActiveDisplayController
 from pi_eink_endpoint.quota.service import QuotaDisplay
 
 
@@ -164,6 +166,81 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.service._periodic_task)
         self.assertEqual(self.service.status, "awaiting_login")
         self.assertIn(("account/read", {"refreshToken": False}), self.client.calls)
+
+
+class ActiveDisplayControllerTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.images = []
+        self.controller = ActiveDisplayController(
+            Path(self.temp.name) / "active-display.json"
+        )
+        self.controller.set_enqueue_image(
+            lambda image, *, partial=False: self.images.append((image, partial))
+        )
+        self.codex = self._service("codex")
+        self.claude = self._service("claude")
+        self.controller.register("codex", self.codex)
+        self.controller.register("claude", self.claude)
+
+    def _service(self, name):
+        async def no_op():
+            pass
+
+        display = QuotaDisplay(
+            lambda image, *, partial=False: self.controller.enqueue(
+                name, image, partial=partial
+            ),
+            state_path=Path(self.temp.name) / f"{name}.json",
+            timezone_name="Asia/Tokyo",
+            interval=3600,
+            prepare=no_op,
+            refresh_quota=no_op,
+        )
+
+        class Service:
+            def __init__(self, display):
+                self.display = display
+
+            @property
+            def display_enabled(self):
+                return self.display.display_enabled
+
+            async def start(self, *, activate=True):
+                await self.display.start(activate=activate)
+
+            def start_display(self):
+                return self.display.start_display()
+
+            def start_login(self):
+                return self.display.snapshot()
+
+            def refresh(self):
+                return self.display.refresh()
+
+        return Service(display)
+
+    async def test_switch_stops_the_other_provider_and_rejects_its_frames(self):
+        self.controller.start_display("codex")
+        self.codex.display.show_quota(Image.new("1", (1, 1), 1))
+        self.assertEqual(len(self.images), 1)
+
+        self.controller.start_display("claude")
+        self.assertTrue(self.claude.display_enabled)
+        self.assertFalse(self.codex.display_enabled)
+        self.assertIsNone(self.codex.display.next_update_at)
+        self.assertFalse(self.controller.refresh("codex"))
+
+        self.codex.display.show_quota(Image.new("1", (1, 1), 1))
+        self.claude.display.show_quota(Image.new("1", (1, 1), 1))
+        self.assertEqual(len(self.images), 2)
+        self.assertEqual(
+            json.loads((Path(self.temp.name) / "active-display.json").read_text()),
+            {"active_provider": "claude"},
+        )
+        self.claude.display.stop_display()
+        await asyncio.sleep(0)
 
 
 class RenderTests(unittest.TestCase):

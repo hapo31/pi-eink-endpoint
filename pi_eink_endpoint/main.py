@@ -19,6 +19,7 @@ from pi_eink_endpoint.claude.service import ClaudeService
 from pi_eink_endpoint.codex.client import AppServerClient
 from pi_eink_endpoint.codex.router import router as codex_router
 from pi_eink_endpoint.codex.service import CodexService
+from pi_eink_endpoint.quota.controller import ActiveDisplayController
 from pi_eink_endpoint.display import WaveshareDisplay
 
 WAVESHARE_LIB = (
@@ -43,7 +44,7 @@ class RenderWorker:
         self.render_worker.start()
 
     def enqueue_automatic(self, image, *, partial=False):
-        """Keep only the newest waiting Codex image; FIFO API jobs are untouched."""
+        """Keep only the newest waiting quota image; FIFO API jobs are untouched."""
         with self._automatic_lock:
             self._automatic_job = (image.copy(), partial)
             if not self._automatic_queued:
@@ -82,6 +83,16 @@ class RenderWorker:
 async def lifespan(app: FastAPI):
     worker = RenderWorker()
     app.state.render_worker = worker
+    display_controller = ActiveDisplayController(
+        Path(
+            os.environ.get(
+                "QUOTA_ACTIVE_DISPLAY_STATE_PATH",
+                "/var/lib/pi-eink-endpoint/active-display.json",
+            )
+        )
+    )
+    display_controller.set_enqueue_image(worker.enqueue_automatic)
+    app.state.quota_display_controller = display_controller
     state_dir = Path(
         os.environ.get("CODEX_STATE_DIR", "/var/lib/pi-eink-endpoint/codex")
     )
@@ -91,18 +102,22 @@ async def lifespan(app: FastAPI):
     client = AppServerClient(os.environ.get("CODEX_EXECUTABLE", "codex"), state_dir)
     codex = CodexService(
         client,
-        worker.enqueue_automatic,
+        lambda image, *, partial=False: display_controller.enqueue(
+            "codex", image, partial=partial
+        ),
         state_path=state_path,
         timezone_name=os.environ.get("CODEX_TIMEZONE", "Asia/Tokyo"),
     )
     app.state.codex_service = codex
-    await codex.start()
+    display_controller.register("codex", codex)
     claude_state_dir = Path(
         os.environ.get("CLAUDE_STATE_DIR", "/var/lib/pi-eink-endpoint/claude")
     )
     claude = ClaudeService(
         ClaudeClient(os.environ.get("CLAUDE_EXECUTABLE", "claude"), claude_state_dir),
-        worker.enqueue_automatic,
+        lambda image, *, partial=False: display_controller.enqueue(
+            "claude", image, partial=partial
+        ),
         state_path=Path(
             os.environ.get(
                 "CLAUDE_DISPLAY_STATE_PATH", claude_state_dir / "display-state.json"
@@ -111,7 +126,8 @@ async def lifespan(app: FastAPI):
         timezone_name=os.environ.get("CLAUDE_TIMEZONE", "Asia/Tokyo"),
     )
     app.state.claude_service = claude
-    await claude.start()
+    display_controller.register("claude", claude)
+    await display_controller.start()
     try:
         yield
     finally:

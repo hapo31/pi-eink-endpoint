@@ -57,8 +57,8 @@ class CodexService:
     def display_enabled(self, value):
         self.display.display_enabled = value
 
-    async def start(self):
-        await self.display.start()
+    async def start(self, *, activate=True):
+        await self.display.start(activate=activate)
 
     def snapshot(self):
         return self.display.snapshot()

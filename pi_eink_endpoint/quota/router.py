@@ -11,12 +11,19 @@ def create_router(provider: str) -> APIRouter:
     def service(request: Request):
         return getattr(request.app.state, f"{provider}_service")
 
+    def controller(request: Request):
+        return getattr(request.app.state, "quota_display_controller", None)
+
     @router.post("/display/start", status_code=HTTPStatus.ACCEPTED)
     async def start_display(request: Request):
+        if display_controller := controller(request):
+            return display_controller.start_display(provider)
         return service(request).start_display()
 
     @router.post("/login/start", status_code=HTTPStatus.ACCEPTED)
     async def start_login(request: Request):
+        if display_controller := controller(request):
+            return display_controller.start_login(provider)
         return service(request).start_login()
 
     @router.get("/status")
@@ -25,7 +32,10 @@ def create_router(provider: str) -> APIRouter:
 
     @router.post("/refresh", status_code=HTTPStatus.ACCEPTED)
     async def refresh(request: Request):
-        if not service(request).refresh():
+        display_controller = controller(request)
+        refreshed = (display_controller.refresh(provider) if display_controller
+                     else service(request).refresh())
+        if not refreshed:
             raise HTTPException(HTTPStatus.CONFLICT, "Display must be enabled and login complete")
         return service(request).snapshot()
 

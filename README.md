@@ -276,5 +276,7 @@ curl -X POST http://pi3.local:8000/claude/refresh
 未ログイン時は公式 CLI の `claude auth login` が発行する URL を QR コードとして表示します。ブラウザーで認証を
 完了するとクォータ表示へ移ります。認証情報は既定で `/var/lib/pi-eink-endpoint/claude` に保存され、HTTP API の
 応答やログには含めません。`CLAUDE_EXECUTABLE`、`CLAUDE_STATE_DIR`、`CLAUDE_DISPLAY_STATE_PATH`、
-`CLAUDE_TIMEZONE` で実行ファイル、保存先、表示状態、タイムゾーンを変更できます。Codex と Claude の表示を同時に
-有効化すると、それぞれの更新時刻に新しい方の画面が表示されます。
+`CLAUDE_TIMEZONE` で実行ファイル、保存先、表示状態、タイムゾーンを変更できます。Codex と Claude は排他的に
+表示されます。いずれかの `/display/start` または `/login/start` を呼ぶと、そのサービスを表示対象に切り替え、
+もう一方の定期更新を停止します。選択状態は既定で
+`/var/lib/pi-eink-endpoint/active-display.json` に保存され、`QUOTA_ACTIVE_DISPLAY_STATE_PATH` で変更できます。

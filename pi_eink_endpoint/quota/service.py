@@ -53,9 +53,10 @@ class QuotaDisplay:
         self._last_quota_image = None
         self.closed = False
 
-    async def start(self):
+    async def start(self, *, activate: bool = True):
+        """Load the saved preference and, unless deferred, start its tasks."""
         self.display_enabled = self._load_display_enabled()
-        if self.display_enabled:
+        if activate and self.display_enabled:
             self._begin_display()
 
     def snapshot(self):
@@ -82,12 +83,25 @@ class QuotaDisplay:
             "timezone": self.timezone_name,
         }
 
-    def start_display(self):
+    def start_display(self, *, prepare: bool = True):
         if not self.display_enabled:
             self.display_enabled = True
             self._save_display_enabled()
+        if prepare:
             self._begin_display()
+        else:
+            self._begin_periodic()
         return self.snapshot()
+
+    def stop_display(self):
+        """Stop this provider's pending and periodic screen updates."""
+        if self.display_enabled:
+            self.display_enabled = False
+            self._save_display_enabled()
+        self.next_update_at = None
+        for task in self.tasks():
+            if task is not None and not task.done():
+                task.cancel()
 
     def refresh(self):
         if (not self.display_enabled or self.login_id is not None or
@@ -146,6 +160,9 @@ class QuotaDisplay:
     def _begin_display(self):
         if self._start_task is None or self._start_task.done():
             self._start_task = self.spawn(self._prepare())
+        self._begin_periodic()
+
+    def _begin_periodic(self):
         if self._periodic_task is None or self._periodic_task.done():
             self._periodic_task = self.spawn(self._periodic())
 
@@ -181,6 +198,6 @@ class QuotaDisplay:
         self.state_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.state_path.parent.chmod(0o700)
         temporary = self.state_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"display_enabled": True}))
+        temporary.write_text(json.dumps({"display_enabled": self.display_enabled}))
         temporary.chmod(0o600)
         temporary.replace(self.state_path)
