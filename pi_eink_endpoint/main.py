@@ -1,4 +1,3 @@
-import io
 import json
 import logging
 import os
@@ -11,7 +10,9 @@ from threading import Lock, Thread
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image
+
+from pi_eink_endpoint.display import WaveshareDisplay
 from starlette.concurrency import run_in_threadpool
 
 from pi_eink_endpoint.codex.client import AppServerClient
@@ -170,57 +171,22 @@ def create_app() -> FastAPI:
     return app
 
 
+
+# Keep the factory lazy so importing the HTTP app does not open GPIO resources.
+eink_display = WaveshareDisplay(lambda: epd2in9_V3.EPD())
+
+
 def update_eink_from_text(data: dict):
-    epd = epd2in9_V3.EPD()
-    epd.init()
-
-    # The driver rotates landscape images 90 degrees into panel coordinates.
-    image = Image.new("1", (epd.height, epd.width), 255)
-    draw = ImageDraw.Draw(image)
-    draw.text((10, 10), data.get("text", "Hello E-ink"), fill=0)
-
-    epd.display(epd.getbuffer(image))
-    epd.sleep()
-    return {"message": "E-ink display updated", "data": data}
+    return eink_display.show_text(data)
 
 
 def update_eink_from_image(binary_image: bytes):
-    epd = epd2in9_V3.EPD()
-    epd.init()
-
-    image = Image.open(io.BytesIO(binary_image)).convert("L")
-    # The driver rotates landscape images 90 degrees into panel coordinates.
-    display_size = (epd.height, epd.width)
-    fitted = ImageOps.contain(image, display_size, Image.Resampling.LANCZOS)
-    image = Image.new("L", display_size, 255)
-    image.paste(
-        fitted,
-        ((image.width - fitted.width) // 2, (image.height - fitted.height) // 2),
-    )
-
-    image = image.point(lambda value: (0x00, 0x80, 0xC0, 0xFF)[value * 4 // 256])
-
-    epd.Init_4Gray()
-    epd.display_4Gray(epd.getbuffer_4Gray(image))
-    epd.sleep()
-
-    return {"message": "E-ink display updated from image"}
+    return eink_display.show_image(binary_image)
 
 
 def update_eink_from_monochrome(image: Image.Image, *, partial: bool = False):
-    """Display a Codex screen, using a partial waveform after its base frame."""
-    epd = epd2in9_V3.EPD()
-    epd.init()
-    # Keep Codex screens separate from the 4-gray image-upload path.
-    image = image.convert("1")
-    buffer = epd.getbuffer(image)
-    if partial:
-        epd.display_Partial(buffer)
-    else:
-        # Populate both controller buffers before any later partial refreshes.
-        epd.display_Base(buffer)
-    epd.sleep()
-    return {"message": "E-ink monochrome display updated", "partial": partial}
+    """Display a quota screen using a partial waveform after its base frame."""
+    return eink_display.show_monochrome(image, partial=partial)
 
 
 app = create_app()
