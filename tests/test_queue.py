@@ -150,6 +150,24 @@ class QueueTests(unittest.TestCase):
             'application/octet-stream',
             schema['paths']['/image']['post']['requestBody']['content'],
         )
+        self.assertIn('202', schema['paths']['/claude/login/code']['post']['responses'])
+
+    def test_claude_authentication_code_endpoint(self):
+        service = self.app.state.claude_service
+        with patch.object(
+            service, 'submit_authentication_code', return_value=True
+        ) as submit:
+            response = self.client.post('/claude/login/code', json={'code': 'code-123'})
+        self.assertEqual(response.status_code, 202)
+        submit.assert_awaited_once_with('code-123')
+
+    def test_claude_authentication_code_requires_pending_login(self):
+        service = self.app.state.claude_service
+        with patch.object(
+            service, 'submit_authentication_code', return_value=False
+        ):
+            response = self.client.post('/claude/login/code', json={'code': 'code-123'})
+        self.assertEqual(response.status_code, 409)
 
 
 class LifespanTests(unittest.TestCase):

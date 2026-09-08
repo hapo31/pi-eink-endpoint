@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from pi_eink_endpoint.claude.client import AuthenticationError
+from pi_eink_endpoint.claude.client import AuthenticationError, ClaudeClient
 from pi_eink_endpoint.claude.models import normalize_quota
 from pi_eink_endpoint.claude.service import ClaudeService
 
@@ -15,6 +15,7 @@ class FakeClient:
     def __init__(self, authenticated=True):
         self.is_authenticated = authenticated
         self.login_callback = None
+        self.authentication_codes = []
 
     async def authenticated(self):
         return self.is_authenticated
@@ -30,6 +31,10 @@ class FakeClient:
         self.is_authenticated = True
         return True
 
+    async def submit_authentication_code(self, code):
+        self.authentication_codes.append(code)
+        return True
+
     async def close(self):
         pass
 
@@ -43,6 +48,27 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(quota.five_hour.remaining_percent, 75)
         self.assertEqual(quota.weekly.remaining_percent, 40)
         self.assertIsNone(quota.weekly.resets_at)
+
+
+class ClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_submits_code_to_pending_cli_login(self):
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "claude"
+            executable.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('Open https://claude.ai/oauth/authorize?test=1', flush=True)\n"
+                "sys.exit(0 if sys.stdin.readline().strip() == 'code-123' else 1)\n"
+            )
+            executable.chmod(0o700)
+            client = ClaudeClient(str(executable), Path(temp) / "state", timeout=1)
+            urls = []
+            login = asyncio.create_task(client.login(urls.append))
+            while not urls:
+                await asyncio.sleep(0)
+            self.assertTrue(await client.submit_authentication_code("code-123"))
+            self.assertTrue(await login)
+            self.assertFalse(await client.submit_authentication_code("too-late"))
 
 
 class ServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -72,6 +98,14 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.service._login_task
         self.assertEqual(self.service.status, "idle")
         self.assertTrue(self.images)
+
+    async def test_authentication_code_is_forwarded_to_client(self):
+        self.assertTrue(await self.service.submit_authentication_code(" code-123 \n"))
+        self.assertEqual(self.client.authentication_codes, ["code-123"])
+
+    async def test_empty_authentication_code_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "must not be empty"):
+            await self.service.submit_authentication_code("  ")
 
     def test_renderer_displays_official_claude_icon(self):
         image = self.service.renderer.render_quota(None, "Asia/Tokyo")

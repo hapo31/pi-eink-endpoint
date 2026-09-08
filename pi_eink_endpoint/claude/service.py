@@ -60,6 +60,13 @@ class ClaudeService:
             self._login_task = self.display.spawn(self._ensure_login())
         return self.snapshot()
 
+    async def submit_authentication_code(self, code):
+        """Forward an OAuth code to the Claude CLI login currently in progress."""
+        code = code.strip()
+        if not code:
+            raise ValueError("authentication code must not be empty")
+        return await self.client.submit_authentication_code(code)
+
     async def _prepare_display(self):
         if self._login_task is not None and not self._login_task.done():
             return

@@ -43,7 +43,8 @@ class ClaudeClient:
         """Run the official CLI login and expose its browser URL to the display."""
         self._login_process = await asyncio.create_subprocess_exec(
             self.executable, "auth", "login", stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT, env=self._env())
+            stderr=asyncio.subprocess.STDOUT, stdin=asyncio.subprocess.PIPE,
+            env=self._env())
         url = None
         async with asyncio.timeout(self.timeout):
             while url is None and (line := await self._login_process.stdout.readline()):
@@ -52,8 +53,22 @@ class ClaudeClient:
                     url = match.group(0).rstrip(".,)")
                     on_url(url)
         # Login remains pending while the URL is completed on another device.
-        await self._login_process.communicate()
+        # Do not use communicate() here: it closes stdin before the code can arrive.
+        await self._login_process.stdout.read()
         return await self._login_process.wait() == 0 and url is not None
+
+    async def submit_authentication_code(self, code):
+        """Send the browser-provided code to the pending CLI login prompt."""
+        process = self._login_process
+        if (process is None or process.returncode is not None or process.stdin is None
+                or process.stdin.is_closing()):
+            return False
+        try:
+            process.stdin.write(f"{code}\n".encode())
+            await process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            return False
+        return True
 
     async def usage(self):
         return await asyncio.to_thread(self._usage)
