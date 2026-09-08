@@ -223,6 +223,7 @@ class ActiveDisplayControllerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_switch_stops_the_other_provider_and_rejects_its_frames(self):
         self.controller.start_display("codex")
+        first_codex_periodic = self.codex.display._periodic_task
         self.codex.display.show_quota(Image.new("1", (1, 1), 1))
         self.assertEqual(len(self.images), 1)
 
@@ -234,6 +235,8 @@ class ActiveDisplayControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.controller.refresh("codex"))
         self.assertTrue(self.codex.display_enabled)
         self.assertFalse(self.claude.display_enabled)
+        self.assertIsNot(self.codex.display._periodic_task, first_codex_periodic)
+        self.assertFalse(self.codex.display._periodic_task.cancelling())
         self.claude.display.show_quota(Image.new("1", (1, 1), 1))
         self.codex.display.show_quota(Image.new("1", (1, 1), 1))
         self.assertEqual(len(self.images), 2)
