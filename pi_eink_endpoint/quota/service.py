@@ -112,7 +112,7 @@ class QuotaDisplay:
         return True
 
     def schedule_refresh(self):
-        if self._refresh_task is None or self._refresh_task.done():
+        if not self._task_is_active(self._refresh_task):
             self._refresh_task = self.spawn(self._refresh_quota())
 
     def show_login(self, image):
@@ -158,13 +158,18 @@ class QuotaDisplay:
         return asyncio.create_task(coroutine)
 
     def _begin_display(self):
-        if self._start_task is None or self._start_task.done():
+        if not self._task_is_active(self._start_task):
             self._start_task = self.spawn(self._prepare())
         self._begin_periodic()
 
     def _begin_periodic(self):
-        if self._periodic_task is None or self._periodic_task.done():
+        if not self._task_is_active(self._periodic_task):
             self._periodic_task = self.spawn(self._periodic())
+
+    @staticmethod
+    def _task_is_active(task):
+        """Treat cancellation requests as stopped before the loop processes them."""
+        return task is not None and not task.done() and not task.cancelling()
 
     async def _periodic(self):
         due = self.monotonic() + self.interval
