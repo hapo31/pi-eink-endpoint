@@ -209,6 +209,20 @@ Pillow が読み込める画像のバイト列を直接送信します（multipa
 画像は縦横比を保って横向きの 296 × 128 ピクセルに収め、余白を白で埋めて中央に配置し、
 4 階調のグレースケールで表示します。
 
+### Claude Code のログイン
+
+`POST /claude/login/start` の後、電子ペーパーに表示された URL をブラウザで開きます。
+認証後にブラウザへ表示された authentication code は、次の API で送信します。
+
+```bash
+curl -i http://pi3.local:8000/claude/login/code \
+  -H 'Content-Type: application/json' \
+  --data '"ブラウザに表示されたコード"'
+```
+
+コードを受け付ける Claude CLI のログイン処理がない場合は HTTP `409 Conflict`、空のコードは
+HTTP `400 Bad Request` を返します。
+
 ### 応答とキュー
 
 `POST /text` と `POST /image` は、本文の受信とキューへの追加が完了すると、画面の更新を待たずに
