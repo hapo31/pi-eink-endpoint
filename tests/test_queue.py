@@ -157,7 +157,7 @@ class QueueTests(unittest.TestCase):
         with patch.object(
             service, 'submit_authentication_code', return_value=True
         ) as submit:
-            response = self.client.post('/claude/login/code', json={'code': 'code-123'})
+            response = self.client.post('/claude/login/code', json='code-123')
         self.assertEqual(response.status_code, 202)
         submit.assert_awaited_once_with('code-123')
 
@@ -166,8 +166,12 @@ class QueueTests(unittest.TestCase):
         with patch.object(
             service, 'submit_authentication_code', return_value=False
         ):
-            response = self.client.post('/claude/login/code', json={'code': 'code-123'})
+            response = self.client.post('/claude/login/code', json='code-123')
         self.assertEqual(response.status_code, 409)
+
+    def test_claude_authentication_code_rejects_json_object(self):
+        response = self.client.post('/claude/login/code', json={'code': 'code-123'})
+        self.assertEqual(response.status_code, 422)
 
 
 class LifespanTests(unittest.TestCase):

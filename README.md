@@ -217,7 +217,7 @@ Pillow が読み込める画像のバイト列を直接送信します（multipa
 ```bash
 curl -i http://pi3.local:8000/claude/login/code \
   -H 'Content-Type: application/json' \
-  --data '{"code":"ブラウザに表示されたコード"}'
+  --data '"ブラウザに表示されたコード"'
 ```
 
 コードを受け付ける Claude CLI のログイン処理がない場合は HTTP `409 Conflict`、空のコードは
