@@ -213,6 +213,7 @@ Pillow が読み込める画像のバイト列を直接送信します（multipa
 
 `POST /claude/login/start` の後、電子ペーパーに表示された URL をブラウザで開きます。
 認証後にブラウザへ表示された authentication code は、次の API で送信します。
+コードは `#` とその後ろの state を含む表示内容全体をコピーしてください。
 
 ```bash
 curl -i http://pi3.local:8000/claude/login/code \

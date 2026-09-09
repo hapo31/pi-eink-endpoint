@@ -58,7 +58,8 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                 "#!/usr/bin/env python3\n"
                 "import sys\n"
                 "print('Open https://claude.ai/oauth/authorize?test=1', flush=True)\n"
-                "sys.exit(0 if sys.stdin.readline().strip() == 'code-123' else 1)\n"
+                "submitted = sys.stdin.buffer.readline()\n"
+                "sys.exit(0 if submitted == b'code-123\\r\\n' else 1)\n"
             )
             executable.chmod(0o700)
             client = ClaudeClient(str(executable), Path(temp) / "state", timeout=1)

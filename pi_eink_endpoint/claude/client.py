@@ -64,7 +64,10 @@ class ClaudeClient:
                 or process.stdin.is_closing()):
             return False
         try:
-            process.stdin.write(f"{code}\n".encode())
+            # Claude Code's paste prompt is terminal-oriented and treats Enter
+            # as carriage return.  CRLF also remains a valid line ending for
+            # CLI versions that read stdin in canonical/line mode.
+            process.stdin.write(f"{code}\r\n".encode())
             await process.stdin.drain()
         except (BrokenPipeError, ConnectionResetError):
             return False
