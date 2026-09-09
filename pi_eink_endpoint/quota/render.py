@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import textwrap
 
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
@@ -107,13 +108,14 @@ class LoginFrame:
         # Never resize after generation: QR modules stay square integer pixels.
         canvas.image.paste(qr.make_image(fill_color="black", back_color="white").convert("1"), (7, 25))
         manual_url = verification_url.removeprefix("https://").removeprefix("http://")
-        canvas.text((124, 32), "Or open this URL:", 10)
-        canvas.text((124, 45), manual_url[:31], 8)
-        if len(manual_url) > 31:
-            canvas.text((124, 55), manual_url[31:62], 8)
-        canvas.text((124, 72), "Then enter code:" if user_code else "Complete login", 10)
+        canvas.text((124, 28), "Or open this URL:", 11)
+        lines = textwrap.wrap(manual_url, width=25, break_long_words=True,
+                              break_on_hyphens=False)
+        for index, line in enumerate(lines[:3]):
+            canvas.text((124, 43 + index * 12), line, 10)
+        canvas.text((124, 82), "Then enter code:" if user_code else "Complete login", 10)
         if user_code:
-            canvas.text((124, 86), user_code, 18)
+            canvas.text((124, 96), user_code, 18)
         if error:
             canvas.text((124, 110), error[:27], 8)
 

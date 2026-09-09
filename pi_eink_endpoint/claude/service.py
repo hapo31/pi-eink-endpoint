@@ -30,6 +30,8 @@ class ClaudeService:
             monotonic=monotonic,
         )
         self._login_task = None
+        self._login_url_ready = asyncio.Event()
+        self._latest_login_url = None
 
     def __getattr__(self, name):
         return getattr(self.display, name)
@@ -54,11 +56,20 @@ class ClaudeService:
     def refresh(self):
         return self.display.refresh()
 
-    def start_login(self):
+    async def start_login(self):
         if self.display.login_id is None and self.display.status != "starting_login":
             self.display.status = "starting_login"
+            self._latest_login_url = None
+            self._login_url_ready.clear()
             self._login_task = self.display.spawn(self._ensure_login())
-        return self.snapshot()
+        if self._login_task is not None and not self._login_task.done():
+            url_waiter = asyncio.create_task(self._login_url_ready.wait())
+            await asyncio.wait((self._login_task, url_waiter),
+                               return_when=asyncio.FIRST_COMPLETED)
+            if not url_waiter.done():
+                url_waiter.cancel()
+                await asyncio.gather(url_waiter, return_exceptions=True)
+        return {**self.snapshot(), "login_url": self._latest_login_url}
 
     async def submit_authentication_code(self, code):
         """Forward an OAuth code to the Claude CLI login currently in progress."""
@@ -107,9 +118,11 @@ class ClaudeService:
             self._record_error("Login could not start", login=True)
 
     def _login_url(self, url):
+        self._latest_login_url = url
         self.display.verification_url = url
         self.display.status = "awaiting_login"
         self._show_login()
+        self._login_url_ready.set()
 
     async def _refresh(self):
         display = self.display

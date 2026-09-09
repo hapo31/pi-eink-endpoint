@@ -161,6 +161,17 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         submit.assert_awaited_once_with('code-123')
 
+    def test_claude_login_start_returns_login_url(self):
+        service = self.app.state.claude_service
+
+        async def start_login():
+            return {"status": "awaiting_login", "login_url": "https://claude.ai/login"}
+
+        with patch.object(service, 'start_login', side_effect=start_login):
+            response = self.client.post('/claude/login/start')
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["login_url"], "https://claude.ai/login")
+
     def test_claude_authentication_code_requires_pending_login(self):
         service = self.app.state.claude_service
         with patch.object(
