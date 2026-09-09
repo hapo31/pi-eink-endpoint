@@ -94,8 +94,11 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_login_displays_cli_authorization_url(self):
         self.client.is_authenticated = False
-        self.service.start_login()
+        response = await self.service.start_login()
         await self.service._login_task
+        self.assertEqual(
+            response["login_url"], "https://claude.ai/oauth/authorize?example=1"
+        )
         self.assertEqual(self.service.status, "idle")
         self.assertTrue(self.images)
 

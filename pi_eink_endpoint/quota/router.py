@@ -1,6 +1,7 @@
 """Shared HTTP boundary for quota display providers."""
 
 from http import HTTPStatus
+import inspect
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -23,8 +24,10 @@ def create_router(provider: str) -> APIRouter:
     @router.post("/login/start", status_code=HTTPStatus.ACCEPTED)
     async def start_login(request: Request):
         if display_controller := controller(request):
-            return display_controller.start_login(provider)
-        return service(request).start_login()
+            result = display_controller.start_login(provider)
+        else:
+            result = service(request).start_login()
+        return await result if inspect.isawaitable(result) else result
 
     @router.get("/status")
     async def status(request: Request):
