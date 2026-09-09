@@ -104,9 +104,15 @@ class QuotaDisplay:
                 task.cancel()
 
     def refresh(self):
-        if (not self.display_enabled or self.login_id is not None or
-                self.status == "starting_login"):
+        if self.login_id is not None or self.status == "starting_login":
             return False
+        # A manual refresh is also an explicit choice of this screen.  Keep
+        # that choice independently of the HTTP controller so callers of the
+        # provider service cannot accidentally perform a one-shot update.
+        if not self.display_enabled:
+            self.display_enabled = True
+            self._save_display_enabled()
+        self._begin_periodic()
         self._force_full_refresh = True
         self.schedule_refresh()
         return True

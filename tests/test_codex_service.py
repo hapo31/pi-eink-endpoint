@@ -120,6 +120,24 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.service._refresh_task
         self.assertFalse(self.images[-1][1])
 
+    async def test_refresh_enables_and_keeps_periodic_updates_running(self):
+        self.service.display.interval = 0.01
+
+        self.assertTrue(self.service.refresh())
+        await self.service._refresh_task
+        initial_rate_limit_calls = self.client.calls.count(
+            ("account/rateLimits/read", None)
+        )
+        await asyncio.sleep(0.03)
+
+        self.assertTrue(self.service.display_enabled)
+        self.assertTrue((Path(self.temp.name) / "state.json").exists())
+        self.assertGreater(
+            self.client.calls.count(("account/rateLimits/read", None)),
+            initial_rate_limit_calls,
+        )
+        self.assertIsNotNone(self.service.next_update_at)
+
     async def test_refresh_recovers_after_authentication_state_changes(self):
         self.service.display_enabled = True
         self.service.display.status = "auth_required"
