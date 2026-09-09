@@ -138,6 +138,33 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNotNone(self.service.next_update_at)
 
+    async def test_periodic_refresh_is_not_lost_during_an_active_refresh(self):
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        refreshes = 0
+
+        async def refresh_quota():
+            nonlocal refreshes
+            refreshes += 1
+            if refreshes == 1:
+                first_started.set()
+                await release_first.wait()
+
+        self.service.display._refresh_quota = refresh_quota
+        self.service.display.interval = 0.01
+        self.service.display.display_enabled = True
+        self.service.display._begin_periodic()
+        self.service.display.schedule_refresh()
+        await first_started.wait()
+
+        # Let the periodic deadline pass while the first provider request is
+        # still running.  Releasing it must immediately drain the pending tick.
+        await asyncio.sleep(0.02)
+        release_first.set()
+        await self.service.display._refresh_task
+
+        self.assertGreaterEqual(refreshes, 2)
+
     async def test_refresh_recovers_after_authentication_state_changes(self):
         self.service.display_enabled = True
         self.service.display.status = "auth_required"
