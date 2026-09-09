@@ -70,6 +70,14 @@ class ClaudeClient:
             return False
         return True
 
+    async def cancel_login(self):
+        """Stop a pending CLI login so a later request can start cleanly."""
+        process = self._login_process
+        if process is not None and process.returncode is None:
+            process.terminate()
+            await process.wait()
+        self._login_process = None
+
     async def usage(self):
         return await asyncio.to_thread(self._usage)
 
@@ -93,6 +101,4 @@ class ClaudeClient:
             raise
 
     async def close(self):
-        if self._login_process and self._login_process.returncode is None:
-            self._login_process.terminate()
-            await self._login_process.wait()
+        await self.cancel_login()

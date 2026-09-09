@@ -106,6 +106,19 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.service.submit_authentication_code(" code-123 \n"))
         self.assertEqual(self.client.authentication_codes, ["code-123"])
 
+    async def test_login_start_redisplays_an_existing_authorization_url(self):
+        self.service.display.display_enabled = True
+        self.service.display.login_id = "claude-cli"
+        self.service.display.status = "awaiting_login"
+        self.service.display.verification_url = "https://claude.ai/oauth/authorize?existing=1"
+        self.service._latest_login_url = self.service.display.verification_url
+        self.service._login_url_ready.set()
+
+        response = await self.service.start_login()
+
+        self.assertEqual(response["login_url"], self.service.display.verification_url)
+        self.assertTrue(self.images)
+
     async def test_empty_authentication_code_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "must not be empty"):
             await self.service.submit_authentication_code("  ")
