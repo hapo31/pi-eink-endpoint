@@ -57,19 +57,32 @@ class ClaudeService:
         return self.display.refresh()
 
     async def start_login(self):
-        if self.display.login_id is None and self.display.status != "starting_login":
+        login_task = self._active_login_task()
+        if login_task is None and self.display.login_id is None:
             self.display.status = "starting_login"
             self._latest_login_url = None
             self._login_url_ready.clear()
             self._login_task = self.display.spawn(self._ensure_login())
-        if self._login_task is not None and not self._login_task.done():
+            login_task = self._login_task
+        elif self._latest_login_url:
+            # Selecting Claude rejects frames created while another provider was
+            # active. Re-enqueue the pending login screen after that selection.
+            self._show_login()
+        if login_task is not None and not self._login_url_ready.is_set():
             url_waiter = asyncio.create_task(self._login_url_ready.wait())
-            await asyncio.wait((self._login_task, url_waiter),
+            await asyncio.wait((login_task, url_waiter),
                                return_when=asyncio.FIRST_COMPLETED)
             if not url_waiter.done():
                 url_waiter.cancel()
                 await asyncio.gather(url_waiter, return_exceptions=True)
         return {**self.snapshot(), "login_url": self._latest_login_url}
+
+    def _active_login_task(self):
+        for task in (self._login_task, self.display._start_task):
+            if (task is not None and not task.done() and
+                    self.display.status in {"starting_login", "awaiting_login"}):
+                return task
+        return None
 
     async def submit_authentication_code(self, code):
         """Forward an OAuth code to the Claude CLI login currently in progress."""
@@ -111,6 +124,14 @@ class ClaudeService:
             display.status = "idle"
             if display.display_enabled:
                 display.schedule_refresh()
+        except asyncio.CancelledError:
+            display.login_id = None
+            display.verification_url = None
+            display.status = "idle"
+            cancel_login = getattr(self.client, "cancel_login", None)
+            if cancel_login is not None:
+                await cancel_login()
+            raise
         except Exception as error:
             logger.warning("Claude Code login failed (error=%s, executable=%r)",
                            type(error).__name__, self.client.executable)

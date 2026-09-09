@@ -120,6 +120,17 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.service._refresh_task
         self.assertFalse(self.images[-1][1])
 
+    async def test_refresh_recovers_after_authentication_state_changes(self):
+        self.service.display_enabled = True
+        self.service.display.status = "auth_required"
+        self.client.auth_type = "chatgpt"
+
+        self.assertTrue(self.service.refresh())
+        await self.service._refresh_task
+
+        self.assertEqual(self.service.status, "ready")
+        self.assertEqual(self.service.quota.five_hour.remaining_percent, 75)
+
     def test_black_to_white_transition_uses_base_refresh(self):
         images = []
 

@@ -58,7 +58,8 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                 "#!/usr/bin/env python3\n"
                 "import sys\n"
                 "print('Open https://claude.ai/oauth/authorize?test=1', flush=True)\n"
-                "sys.exit(0 if sys.stdin.readline().strip() == 'code-123' else 1)\n"
+                "submitted = sys.stdin.buffer.readline()\n"
+                "sys.exit(0 if submitted == b'code-123\\r\\n' else 1)\n"
             )
             executable.chmod(0o700)
             client = ClaudeClient(str(executable), Path(temp) / "state", timeout=1)
@@ -105,6 +106,19 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_authentication_code_is_forwarded_to_client(self):
         self.assertTrue(await self.service.submit_authentication_code(" code-123 \n"))
         self.assertEqual(self.client.authentication_codes, ["code-123"])
+
+    async def test_login_start_redisplays_an_existing_authorization_url(self):
+        self.service.display.display_enabled = True
+        self.service.display.login_id = "claude-cli"
+        self.service.display.status = "awaiting_login"
+        self.service.display.verification_url = "https://claude.ai/oauth/authorize?existing=1"
+        self.service._latest_login_url = self.service.display.verification_url
+        self.service._login_url_ready.set()
+
+        response = await self.service.start_login()
+
+        self.assertEqual(response["login_url"], self.service.display.verification_url)
+        self.assertTrue(self.images)
 
     async def test_empty_authentication_code_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "must not be empty"):

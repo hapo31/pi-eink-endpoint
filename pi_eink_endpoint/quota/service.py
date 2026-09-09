@@ -105,7 +105,7 @@ class QuotaDisplay:
 
     def refresh(self):
         if (not self.display_enabled or self.login_id is not None or
-                self.status in {"auth_required", "starting_login"}):
+                self.status == "starting_login"):
             return False
         self._force_full_refresh = True
         self.schedule_refresh()
