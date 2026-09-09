@@ -18,6 +18,12 @@ from zoneinfo import ZoneInfo
 FULL_REFRESH_EVERY = 4
 
 
+def _image_pixels(image):
+    """Return pixels across the supported Pillow versions."""
+    flattened = getattr(image, "get_flattened_data", None)
+    return flattened() if flattened is not None else image.getdata()
+
+
 class QuotaDisplay:
     """State and panel-update policy shared by one quota provider."""
 
@@ -48,6 +54,7 @@ class QuotaDisplay:
         self.user_code = None
         self.next_update_at = None
         self._periodic_task = self._refresh_task = self._start_task = None
+        self._refresh_pending = False
         self._quota_refresh_count = 0
         self._force_full_refresh = self._quota_screen_visible = False
         self._last_quota_image = None
@@ -118,8 +125,18 @@ class QuotaDisplay:
         return True
 
     def schedule_refresh(self):
+        # Do not lose a timer or manual refresh that arrives while the previous
+        # provider request is still running.  The single runner coalesces such
+        # requests and performs one more fetch as soon as the in-flight fetch
+        # finishes.
+        self._refresh_pending = True
         if not self._task_is_active(self._refresh_task):
-            self._refresh_task = self.spawn(self._refresh_quota())
+            self._refresh_task = self.spawn(self._run_refreshes())
+
+    async def _run_refreshes(self):
+        while self._refresh_pending and not self.closed and self.display_enabled:
+            self._refresh_pending = False
+            await self._refresh_quota()
 
     def show_login(self, image):
         """Replace the quota frame, so the next quota image is a base frame."""
@@ -156,7 +173,7 @@ class QuotaDisplay:
         return any(
             previous == 0 and next_pixel != 0
             for previous, next_pixel in zip(
-                self._last_quota_image.get_flattened_data(), current.get_flattened_data()
+                _image_pixels(self._last_quota_image), _image_pixels(current)
             )
         )
 
