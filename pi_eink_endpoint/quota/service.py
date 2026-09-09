@@ -18,6 +18,12 @@ from zoneinfo import ZoneInfo
 FULL_REFRESH_EVERY = 4
 
 
+def _image_pixels(image):
+    """Return pixels across the supported Pillow versions."""
+    flattened = getattr(image, "get_flattened_data", None)
+    return flattened() if flattened is not None else image.getdata()
+
+
 class QuotaDisplay:
     """State and panel-update policy shared by one quota provider."""
 
@@ -167,7 +173,7 @@ class QuotaDisplay:
         return any(
             previous == 0 and next_pixel != 0
             for previous, next_pixel in zip(
-                self._last_quota_image.get_flattened_data(), current.get_flattened_data()
+                _image_pixels(self._last_quota_image), _image_pixels(current)
             )
         )
 

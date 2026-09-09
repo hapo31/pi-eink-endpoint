@@ -200,6 +200,26 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(images, [False, True, False])
 
+    def test_black_to_white_detection_supports_older_pillow(self):
+        class LegacyImage:
+            size = (1, 1)
+
+            def __init__(self, pixel):
+                self.pixel = pixel
+
+            def convert(self, mode):
+                self.assert_mode = mode
+                return self
+
+            def getdata(self):
+                return [self.pixel]
+
+        self.service.display._last_quota_image = LegacyImage(0)
+
+        self.assertTrue(
+            self.service.display._has_black_to_white_transition(LegacyImage(255))
+        )
+
     async def test_login_failure_logs_safe_diagnostic_metadata(self):
         self.client.login_error = AppServerError(-32001)
         with self.assertLogs("pi_eink_endpoint.codex.service", level="WARNING") as logs:
